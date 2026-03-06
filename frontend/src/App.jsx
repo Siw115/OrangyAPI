@@ -3,6 +3,7 @@ import "./App.css";
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || "https://orangyapi.onrender.com";
 const API_BASE_URL = (RAW_API_URL.startsWith("http") ? RAW_API_URL : `https://${RAW_API_URL}`).replace(/\/$/, "");
+const RETRY_DELAYS_MS = [600, 1400];
 
 export default function App() {
   const [image, setImage] = useState("");
@@ -20,18 +21,41 @@ export default function App() {
     img.src = url;
   };
 
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const fetchRandomOrangutan = async () => {
+    let lastError = null;
+
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/random-orangutan`, {
+          cache: "no-store"
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.details || data.error || "Something went wrong");
+        }
+
+        return data;
+      } catch (err) {
+        lastError = err;
+        if (attempt < RETRY_DELAYS_MS.length) {
+          await wait(RETRY_DELAYS_MS[attempt]);
+        }
+      }
+    }
+
+    throw lastError || new Error("Failed to fetch");
+  };
+
   const getOrangutan = async () => {
     try {
       setLoading(true);
       setImageLoading(true);
       setError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/random-orangutan`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.details || data.error || "Something went wrong");
-      }
+      const data = await fetchRandomOrangutan();
 
       setImage(data.image);
       setTitle(data.title || "Orangutan");
@@ -39,19 +63,13 @@ export default function App() {
       setPhotographer(data.photographer || "");
       setPexelsUrl(data.pexelsUrl || "");
 
-      fetch(`${API_BASE_URL}/api/random-orangutan`)
-        .then((res) => res.json())
+      fetchRandomOrangutan()
         .then((next) => {
           if (next.image) preloadImage(next.image);
         })
         .catch(() => {});
     } catch (err) {
-      setError(`${err.message} (API: ${API_BASE_URL})`);
-      setImage("");
-      setTitle("");
-      setSource("");
-      setPhotographer("");
-      setPexelsUrl("");
+      setError(`Temporary connection issue. Try again. (API: ${API_BASE_URL})`);
       setImageLoading(false);
     } finally {
       setLoading(false);
