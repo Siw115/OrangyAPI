@@ -10,3 +10,20 @@ services:
     envVars:
       - key: PEXELS_API_KEY
         sync: false
+  - type: web
+    name: orangy-frontend
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: orangyapi
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
