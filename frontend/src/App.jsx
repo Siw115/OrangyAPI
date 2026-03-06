@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
-const RAW_API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const RAW_API_URL = import.meta.env.VITE_API_URL || "https://orangyapi.onrender.com";
 const API_BASE_URL = (RAW_API_URL.startsWith("http") ? RAW_API_URL : `https://${RAW_API_URL}`).replace(/\/$/, "");
 
 export default function App() {
