@@ -13,7 +13,6 @@ services:
   - type: web
     name: orangy-frontend
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: npm run build
     staticPublishPath: dist
