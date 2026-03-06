@@ -46,7 +46,7 @@ export default function App() {
         })
         .catch(() => {});
     } catch (err) {
-      setError(err.message);
+      setError(`${err.message} (API: ${API_BASE_URL})`);
       setImage("");
       setTitle("");
       setSource("");

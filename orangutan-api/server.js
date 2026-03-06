@@ -292,6 +292,14 @@ async function fillCache() {
   console.log(`Cached ${orangutanCache.length} orangutan photos`);
 }
 
+async function refreshCacheSafe(context = "scheduled refresh") {
+  try {
+    await fillCache();
+  } catch (error) {
+    console.error(`${context} failed:`, error.message);
+  }
+}
+
 function getRandomFromCache() {
   if (!orangutanCache.length) {
     throw new Error("Cache is empty");
@@ -384,23 +392,15 @@ app.get("/api/refresh-cache", async (req, res) => {
 });
 
 async function startServer() {
-  try {
-    await fillCache();
+  app.listen(PORT, () => {
+    console.log(`OrangyAPI running at http://localhost:${PORT}`);
+  });
 
-    setInterval(async () => {
-      try {
-        await fillCache();
-      } catch (error) {
-        console.error("Cache refresh failed:", error.message);
-      }
-    }, 6 * 60 * 60 * 1000);
+  await refreshCacheSafe("Initial cache fill");
 
-    app.listen(PORT, () => {
-      console.log(`OrangyAPI running at http://localhost:${PORT}`);
-    });
-  } catch (error) {
-    console.error("Startup failed:", error.message);
-  }
+  setInterval(() => {
+    refreshCacheSafe("Cache refresh");
+  }, 6 * 60 * 60 * 1000);
 }
 
 startServer();
