@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
+
 export default function App() {
   const [image, setImage] = useState("");
   const [title, setTitle] = useState("");
@@ -23,7 +25,7 @@ export default function App() {
       setImageLoading(true);
       setError("");
 
-      const response = await fetch("http://localhost:3000/api/random-orangutan");
+      const response = await fetch(`${API_BASE_URL}/api/random-orangutan`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -36,7 +38,7 @@ export default function App() {
       setPhotographer(data.photographer || "");
       setPexelsUrl(data.pexelsUrl || "");
 
-      fetch("http://localhost:3000/api/random-orangutan")
+      fetch(`${API_BASE_URL}/api/random-orangutan`)
         .then((res) => res.json())
         .then((next) => {
           if (next.image) preloadImage(next.image);
