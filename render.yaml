@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: orangyapi
+    runtime: node
+    plan: free
+    rootDir: orangutan-api
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: PEXELS_API_KEY
+        sync: false
