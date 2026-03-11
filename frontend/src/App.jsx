@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 import meImage from "./assets/me.png";
 
@@ -6,6 +7,40 @@ const API_BASE_URL = (RAW_API_URL.startsWith("http") ? RAW_API_URL : `https://${
 const RETRY_DELAYS_MS = [600, 1400];
 const PREFETCH_BATCH_SIZE = 6;
 const SWAGGER_URL = `${API_BASE_URL}/docs`;
+const heroVariants = {
+  hidden: { opacity: 0, y: 30, scale: 0.98 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.75, ease: [0.22, 1, 0.36, 1] },
+  },
+};
+const detailVariants = {
+  hidden: { opacity: 0, y: 18 },
+  visible: (delay = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay, duration: 0.55, ease: [0.22, 1, 0.36, 1] },
+  }),
+};
+const photoVariants = {
+  initial: { opacity: 0, scale: 0.9, rotate: -2, filter: "blur(10px) saturate(0.9)" },
+  animate: {
+    opacity: 1,
+    scale: 1,
+    rotate: 0,
+    filter: "blur(0px) saturate(1)",
+    transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] },
+  },
+  exit: {
+    opacity: 0,
+    scale: 1.05,
+    rotate: 1.5,
+    filter: "blur(8px) saturate(1.08)",
+    transition: { duration: 0.3, ease: [0.4, 0, 1, 1] },
+  },
+};
 
 function ShuffleIcon() {
   return (
@@ -48,6 +83,10 @@ function DocsIcon() {
 }
 
 export default function App() {
+  const prefersReducedMotion = useReducedMotion();
+  const pointerX = useMotionValue(50);
+  const pointerY = useMotionValue(50);
+  const spotlight = useMotionTemplate`radial-gradient(circle at ${pointerX}% ${pointerY}%, rgba(255, 216, 3, 0.24), transparent 20%), radial-gradient(circle at top left, rgba(255,216,3,0.18), transparent 30%), radial-gradient(circle at bottom right, rgba(186,232,232,0.22), transparent 28%), linear-gradient(145deg, #fffffe 0%, #f7f8fa 42%, #eef3f5 100%)`;
   const [image, setImage] = useState("");
   const [title, setTitle] = useState("");
   const [source, setSource] = useState("");
@@ -57,6 +96,7 @@ export default function App() {
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState("");
   const [photoQueue, setPhotoQueue] = useState([]);
+  const [shuffleBurst, setShuffleBurst] = useState(0);
 
   const preloadImage = async (url) => {
     if (!url) return;
@@ -113,6 +153,7 @@ export default function App() {
     try {
       setLoading(true);
       setError("");
+      setShuffleBurst((count) => count + 1);
 
       let nextPhoto = null;
 
@@ -175,134 +216,264 @@ export default function App() {
     };
   }, [photoQueue]);
 
+  useEffect(() => {
+    if (!shuffleBurst) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setShuffleBurst(0);
+    }, 520);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [shuffleBurst]);
+
   return (
-    <div className="page-shell min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.2),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(20,184,166,0.18),_transparent_28%),linear-gradient(145deg,_#fff7ed_0%,_#fffbeb_38%,_#f7fee7_100%)] px-4 py-8 text-stone-900 sm:px-6 lg:px-8">
+    <motion.div
+      className="page-shell min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(255,216,3,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(186,232,232,0.22),_transparent_28%),linear-gradient(145deg,_#fffffe_0%,_#f7f8fa_42%,_#eef3f5_100%)] px-4 py-8 text-[#272343] sm:px-6 lg:px-8"
+      style={prefersReducedMotion ? undefined : { backgroundImage: spotlight }}
+      onPointerMove={(event) => {
+        if (prefersReducedMotion) {
+          return;
+        }
+
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const nextX = ((event.clientX - bounds.left) / bounds.width) * 100;
+        const nextY = ((event.clientY - bounds.top) / bounds.height) * 100;
+        pointerX.set(Math.max(0, Math.min(100, nextX)));
+        pointerY.set(Math.max(0, Math.min(100, nextY)));
+      }}
+    >
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center">
         <main className="grid w-full gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <section className="reveal-up relative overflow-hidden rounded-[2rem] border border-white/60 bg-white/75 p-8 shadow-[0_24px_80px_rgba(120,53,15,0.12)] backdrop-blur xl:p-10">
-            <div className="ambient-orb orb-one absolute -left-12 top-0 h-40 w-40 rounded-full bg-orange-200/40 blur-3xl" />
-            <div className="ambient-orb orb-two absolute bottom-0 right-0 h-36 w-36 rounded-full bg-lime-200/50 blur-3xl" />
+          <motion.section
+            variants={heroVariants}
+            initial={prefersReducedMotion ? false : "hidden"}
+            animate="visible"
+            whileHover={prefersReducedMotion ? undefined : { y: -4 }}
+            className="relative overflow-hidden rounded-[2rem] border border-[#272343]/15 bg-white/85 p-8 shadow-[0_24px_80px_rgba(39,35,67,0.10)] backdrop-blur xl:p-10"
+          >
+            <div className="ambient-orb orb-one absolute -left-12 top-0 h-40 w-40 rounded-full bg-[#ffd803]/28 blur-3xl" />
+            <div className="ambient-orb orb-two absolute bottom-0 right-0 h-36 w-36 rounded-full bg-[#bae8e8]/50 blur-3xl" />
 
             <div className="relative flex h-full flex-col">
-              <div className="badge-pop mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-orange-700">
+              <motion.div
+                custom={0.08}
+                variants={detailVariants}
+                initial={prefersReducedMotion ? false : "hidden"}
+                animate="visible"
+                className="badge-pop mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-[#272343]/20 bg-[#e3f6f5] px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#272343]"
+              >
                 Orangutan Photo API
-              </div>
+              </motion.div>
 
-              <div className="mascot-bob mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-stone-950 text-3xl text-white shadow-lg shadow-orange-200/60">
+              <motion.div
+                custom={0.14}
+                variants={detailVariants}
+                initial={prefersReducedMotion ? false : "hidden"}
+                animate="visible"
+                whileHover={prefersReducedMotion ? undefined : { rotate: 8, scale: 1.08 }}
+                className="mascot-bob mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-[#272343] text-3xl text-[#fffffe] shadow-lg shadow-[#bae8e8]/70"
+              >
                 🦧
-              </div>
+              </motion.div>
 
-              <h1 className="max-w-md text-4xl font-black tracking-[-0.06em] text-stone-950 sm:text-5xl">
+              <motion.h1
+                custom={0.2}
+                variants={detailVariants}
+                initial={prefersReducedMotion ? false : "hidden"}
+                animate="visible"
+                className="max-w-md text-4xl font-black tracking-[-0.06em] text-[#272343] sm:text-5xl"
+              >
                 OrangyAPI
-              </h1>
+              </motion.h1>
 
-              <p className="mt-5 max-w-lg text-base leading-7 text-stone-600 sm:text-lg">
+              <motion.p
+                custom={0.28}
+                variants={detailVariants}
+                initial={prefersReducedMotion ? false : "hidden"}
+                animate="visible"
+                className="mt-5 max-w-lg text-base leading-7 text-[#2d334a] sm:text-lg"
+              >
                 Fresh orangutan photos, straight from the canopy. Hit randomize for another jungle celebrity, or open the docs for the technical bananas.
-              </p>
+              </motion.p>
 
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <button
+              <motion.div
+                custom={0.34}
+                variants={detailVariants}
+                initial={prefersReducedMotion ? false : "hidden"}
+                animate="visible"
+                className="mt-8 flex flex-col gap-3 sm:flex-row"
+              >
+                <motion.button
                   type="button"
                   onClick={getOrangutan}
                   disabled={loading}
-                  className={`randomize-button inline-flex items-center justify-center gap-2 rounded-2xl bg-stone-950 px-5 py-4 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-70 ${
+                  whileHover={prefersReducedMotion ? undefined : { y: -5, scale: 1.02, rotate: -1 }}
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.97, y: 1 }}
+                  className={`randomize-button inline-flex items-center justify-center gap-2 rounded-2xl bg-[#ffd803] px-5 py-4 text-sm font-semibold text-[#272343] transition hover:bg-[#f6cf00] disabled:cursor-not-allowed disabled:opacity-70 ${
                     loading ? "is-loading" : ""
                   }`}
                 >
                   <ShuffleIcon />
                   {loading ? "Randomizing..." : "Randomize"}
-                </button>
+                </motion.button>
 
-                <a
+                <motion.a
                   href={SWAGGER_URL}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-stone-300 bg-white px-5 py-4 text-sm font-semibold text-stone-800 transition hover:-translate-y-0.5 hover:border-stone-950 hover:text-stone-950"
+                  whileHover={prefersReducedMotion ? undefined : { y: -4, scale: 1.01 }}
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#272343]/25 bg-white px-5 py-4 text-sm font-semibold text-[#272343] transition hover:-translate-y-0.5 hover:border-[#272343] hover:text-[#272343]"
                 >
                   <DocsIcon />
                   Swagger Docs
-                </a>
-              </div>
+                </motion.a>
+              </motion.div>
 
               {error && (
-                <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                <p className="mt-5 rounded-2xl border border-[#ffd803]/60 bg-[#fff7cc] px-4 py-3 text-sm font-medium text-[#272343]">
                   {error}
                 </p>
               )}
 
               <div className="mt-auto pt-8">
-                <div className="creator-card mb-4 flex items-center gap-4 rounded-[1.5rem] border border-orange-200/70 bg-orange-50/80 p-4">
+                <motion.div
+                  custom={0.42}
+                  variants={detailVariants}
+                  initial={prefersReducedMotion ? false : "hidden"}
+                  animate="visible"
+                  whileHover={prefersReducedMotion ? undefined : { y: -6, rotate: -0.5, scale: 1.01 }}
+                  className="creator-card mb-4 flex items-center gap-4 rounded-[1.5rem] border border-[#272343]/15 bg-[#e3f6f5]/80 p-4"
+                >
                   <img
                     src={meImage}
                     alt="Creator portrait"
                     className="creator-photo h-20 w-20 rounded-2xl object-cover"
                   />
                   <div>
-                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-orange-700">
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-[#272343]">
                       Created By Me
                     </p>
-                    <p className="mt-1 text-sm text-stone-700">
+                    <p className="mt-1 text-sm text-[#2d334a]">
                       Built and styled by the creator of OrangyAPI. Image by{" "}
                       <a
                         href="https://humation.app/"
                         target="_blank"
                         rel="noreferrer"
-                        className="font-semibold text-stone-950 underline decoration-orange-300 underline-offset-4"
+                        className="font-semibold text-[#272343] underline decoration-[#ffd803] underline-offset-4"
                       >
                         humation.app
                       </a>
                       .
                     </p>
                   </div>
-                </div>
+                </motion.div>
 
-                <div className="reveal-up reveal-delay-2 rounded-[1.75rem] border border-stone-200/80 bg-stone-950 px-5 py-4 text-sm text-stone-300">
-                  <p className="font-semibold uppercase tracking-[0.2em] text-orange-300">
+                <motion.div
+                  custom={0.5}
+                  variants={detailVariants}
+                  initial={prefersReducedMotion ? false : "hidden"}
+                  animate="visible"
+                  whileHover={prefersReducedMotion ? undefined : { y: -4 }}
+                  className="rounded-[1.75rem] border border-[#272343]/15 bg-[#272343] px-5 py-4 text-sm text-[#e3f6f5]"
+                >
+                  <p className="font-semibold uppercase tracking-[0.2em] text-[#ffd803]">
                     Live endpoint
                   </p>
-                  <p className="mt-2 break-all font-mono text-xs text-stone-100 sm:text-sm">
+                  <a
+                    href={`${API_BASE_URL}/api/random-orangutan`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block break-all font-mono text-xs text-[#fffffe] underline decoration-[#ffd803]/70 underline-offset-4 transition hover:text-[#ffd803] sm:text-sm"
+                  >
                     {API_BASE_URL}/api/random-orangutan
-                  </p>
-                </div>
+                  </a>
+                </motion.div>
               </div>
             </div>
-          </section>
+          </motion.section>
 
-          <section className="reveal-up reveal-delay-1 overflow-hidden rounded-[2rem] border border-stone-200/70 bg-white/80 p-4 shadow-[0_24px_80px_rgba(41,37,36,0.12)] backdrop-blur sm:p-5">
-            <div className="flex h-[640px] flex-col rounded-[1.6rem] bg-stone-100/80 p-3 sm:h-[720px] sm:p-4">
-              <div className="photo-stage relative flex h-[420px] shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.75),rgba(231,229,228,0.95))] sm:h-[520px]">
+          <motion.section
+            variants={heroVariants}
+            initial={prefersReducedMotion ? false : "hidden"}
+            whileHover={prefersReducedMotion ? undefined : { y: -4 }}
+            animate={
+              prefersReducedMotion
+                ? "visible"
+                : shuffleBurst
+                  ? {
+                      x: [0, -10, 10, -6, 6, 0],
+                      y: [0, -6, 4, -3, 2, 0],
+                      rotate: [0, -1.4, 1.2, -0.8, 0.5, 0],
+                      transition: { duration: 0.52, ease: [0.22, 1, 0.36, 1] },
+                    }
+                  : "visible"
+            }
+            className="overflow-hidden rounded-[2rem] border border-[#272343]/15 bg-white/82 p-4 shadow-[0_24px_80px_rgba(39,35,67,0.10)] backdrop-blur sm:p-5"
+          >
+            <motion.div
+              animate={
+                prefersReducedMotion || !shuffleBurst
+                  ? undefined
+                  : {
+                      rotate: [0, 0.6, -0.6, 0],
+                      scale: [1, 0.985, 1.01, 1],
+                      transition: { duration: 0.48, ease: [0.22, 1, 0.36, 1] },
+                    }
+              }
+              className="photo-shell flex h-[640px] flex-col rounded-[1.6rem] p-3 sm:h-[720px] sm:p-4"
+            >
+              <div className="photo-stage relative flex h-[420px] shrink-0 flex-col overflow-hidden rounded-[1.45rem] border border-[#272343]/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(227,246,245,0.98))] p-3 sm:h-[520px] sm:p-4">
+                <div className="photo-stage-label mb-3 inline-flex w-fit items-center rounded-full border border-[#272343]/12 bg-white/80 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[#2d334a]">
+                  Featured orangutan
+                </div>
+                <div className="photo-well relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[1.15rem] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98),_rgba(242,247,247,0.96)_58%,_rgba(227,246,245,0.9)_100%)] px-4 py-5 sm:px-6">
                 {imageLoading && (
                   <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(231,229,228,0.95)_8%,rgba(255,255,255,0.98)_18%,rgba(231,229,228,0.95)_33%)] bg-[length:200%_100%]" />
                 )}
 
                 {image ? (
-                  <img
-                    key={image}
-                    src={image}
-                    alt={title}
-                    className={`photo-swap block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
-                    loading="eager"
-                    decoding="async"
-                    fetchPriority="high"
-                    onLoad={() => setImageLoading(false)}
-                    onError={() => {
-                      setImageLoading(false);
-                      setError("Could not load image");
-                    }}
-                  />
+                  <AnimatePresence mode="wait">
+                    <motion.img
+                      key={image}
+                      variants={prefersReducedMotion ? undefined : photoVariants}
+                      initial={prefersReducedMotion ? false : "initial"}
+                      animate={prefersReducedMotion ? undefined : "animate"}
+                      exit={prefersReducedMotion ? undefined : "exit"}
+                      src={image}
+                      alt={title}
+                      className={`block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
+                      loading="eager"
+                      decoding="async"
+                      fetchPriority="high"
+                      onLoad={() => setImageLoading(false)}
+                      onError={() => {
+                        setImageLoading(false);
+                        setError("Could not load image");
+                      }}
+                    />
+                  </AnimatePresence>
                 ) : (
-                  <p className="px-6 text-center text-sm font-medium text-stone-500">
+                  <p className="px-6 text-center text-sm font-medium text-[#2d334a]">
                     Loading orangutan...
                   </p>
                 )}
+                </div>
               </div>
 
-              <div className="flex h-[120px] shrink-0 flex-col justify-start gap-3 overflow-hidden px-2 pb-2 pt-5 sm:h-[132px] sm:px-3">
-                <p className="text-xl font-bold tracking-[-0.03em] text-stone-950">
+              <div className="photo-caption mt-4 flex min-h-[132px] shrink-0 flex-col justify-start gap-3 rounded-[1.3rem] border border-white/70 bg-white/86 px-4 py-4 shadow-[0_16px_34px_rgba(39,35,67,0.07)] sm:min-h-[144px] sm:px-5">
+                <div className="flex items-start justify-between gap-4">
+                  <p className="text-xl font-bold tracking-[-0.03em] text-[#272343]">
                   {title || "Loading orangutan..."}
-                </p>
+                  </p>
+                  <span className="rounded-full bg-[#e3f6f5] px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[#272343]">
+                    Photo
+                  </span>
+                </div>
 
-                <p className="text-sm leading-6 text-stone-600">
+                <p className="text-sm leading-6 text-[#2d334a]">
                   {photographer ? (
                     <>
                       Photo by{" "}
@@ -311,7 +482,7 @@ export default function App() {
                           href={pexelsUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="font-semibold text-stone-950 underline decoration-orange-300 underline-offset-4"
+                          className="font-semibold text-[#272343] underline decoration-[#ffd803] underline-offset-4"
                         >
                           {photographer}
                         </a>
@@ -327,10 +498,10 @@ export default function App() {
                   )}
                 </p>
               </div>
-            </div>
-          </section>
+            </motion.div>
+          </motion.section>
         </main>
       </div>
-    </div>
+    </motion.div>
   );
 }
