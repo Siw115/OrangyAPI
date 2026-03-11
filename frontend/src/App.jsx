@@ -4,6 +4,7 @@ import "./App.css";
 const RAW_API_URL = import.meta.env.VITE_API_URL || "https://orangyapi.onrender.com";
 const API_BASE_URL = (RAW_API_URL.startsWith("http") ? RAW_API_URL : `https://${RAW_API_URL}`).replace(/\/$/, "");
 const RETRY_DELAYS_MS = [600, 1400];
+const PREFETCH_BATCH_SIZE = 6;
 
 export default function App() {
   const [image, setImage] = useState("");
@@ -14,30 +15,34 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
   const [error, setError] = useState("");
+  const [photoQueue, setPhotoQueue] = useState([]);
 
-  const preloadImage = (url) => {
+  const preloadImage = async (url) => {
     if (!url) return;
-    const img = new Image();
-    img.src = url;
+    await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = resolve;
+      img.onerror = reject;
+      img.decoding = "async";
+      img.src = url;
+    });
   };
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const fetchRandomOrangutan = async () => {
+  const fetchOrangutanBatch = async () => {
     let lastError = null;
 
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/random-orangutan`, {
-          cache: "no-store"
-        });
+        const response = await fetch(`${API_BASE_URL}/api/orangutans?count=${PREFETCH_BATCH_SIZE}`);
         const data = await response.json();
 
         if (!response.ok) {
           throw new Error(data.details || data.error || "Something went wrong");
         }
 
-        return data;
+        return data.images || [];
       } catch (err) {
         lastError = err;
         if (attempt < RETRY_DELAYS_MS.length) {
@@ -49,25 +54,43 @@ export default function App() {
     throw lastError || new Error("Failed to fetch");
   };
 
+  const applyPhoto = async (photo) => {
+    if (!photo?.image) {
+      throw new Error("Missing image");
+    }
+
+    setImageLoading(true);
+    await preloadImage(photo.image);
+    setImage(photo.image);
+    setTitle(photo.title || "Orangutan");
+    setSource(photo.source || "");
+    setPhotographer(photo.photographer || "");
+    setPexelsUrl(photo.pexelsUrl || "");
+  };
+
   const getOrangutan = async () => {
     try {
       setLoading(true);
-      setImageLoading(true);
       setError("");
 
-      const data = await fetchRandomOrangutan();
+      let nextPhoto = null;
 
-      setImage(data.image);
-      setTitle(data.title || "Orangutan");
-      setSource(data.source || "");
-      setPhotographer(data.photographer || "");
-      setPexelsUrl(data.pexelsUrl || "");
+      setPhotoQueue((currentQueue) => {
+        if (currentQueue.length > 0) {
+          [nextPhoto] = currentQueue;
+          return currentQueue.slice(1);
+        }
 
-      fetchRandomOrangutan()
-        .then((next) => {
-          if (next.image) preloadImage(next.image);
-        })
-        .catch(() => {});
+        return currentQueue;
+      });
+
+      if (!nextPhoto) {
+        const queuedPhotos = await fetchOrangutanBatch();
+        [nextPhoto] = queuedPhotos;
+        setPhotoQueue(queuedPhotos.slice(1));
+      }
+
+      await applyPhoto(nextPhoto);
     } catch (err) {
       setError(`Temporary connection issue. Try again. (API: ${API_BASE_URL})`);
       setImageLoading(false);
@@ -79,6 +102,37 @@ export default function App() {
   useEffect(() => {
     getOrangutan();
   }, []);
+
+  useEffect(() => {
+    if (photoQueue.length >= 2) {
+      return;
+    }
+
+    let cancelled = false;
+
+    fetchOrangutanBatch()
+      .then((photos) => {
+        if (cancelled || !photos.length) {
+          return;
+        }
+
+        setPhotoQueue((currentQueue) => {
+          const seen = new Set(currentQueue.map((photo) => photo.id));
+          const additions = photos.filter((photo) => !seen.has(photo.id));
+          return [...currentQueue, ...additions];
+        });
+
+        const preloadTarget = photos[0]?.image;
+        if (preloadTarget) {
+          preloadImage(preloadTarget).catch(() => {});
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [photoQueue]);
 
   return (
     <div className="app">
@@ -112,6 +166,9 @@ export default function App() {
                 src={image}
                 alt={title}
                 className={imageLoading ? "image hidden" : "image visible"}
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
                 onLoad={() => setImageLoading(false)}
                 onError={() => {
                   setImageLoading(false);
