@@ -40,21 +40,35 @@ const swaggerDefinition = {
   info: {
     title: "OrangyAPI",
     version: "1.0.0",
-    description: "Random orangutan image API powered by Pexels"
+    description: "Random orangutan image API powered by Pexels, with cached image proxying and a simple JSON-first interface.",
+    contact: {
+      name: "OrangyAPI Maintainer",
+      url: "https://github.com/Siw115/OrangyAPI"
+    },
+    license: {
+      name: "ISC",
+      url: "https://opensource.org/licenses/ISC"
+    }
   },
   servers: [
     {
       url: process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`
     }
   ],
+  externalDocs: {
+    description: "Project repository",
+    url: "https://github.com/Siw115/OrangyAPI"
+  },
   tags: [
     { name: "General" },
-    { name: "Orangutans" }
+    { name: "Orangutans" },
+    { name: "Images" }
   ],
   components: {
     schemas: {
       Photo: {
         type: "object",
+        description: "Normalized orangutan photo metadata returned by the API.",
         properties: {
           id: { type: "integer", example: 1996333 },
           animal: { type: "string", example: "orangutan" },
@@ -67,10 +81,72 @@ const swaggerDefinition = {
           photographerUrl: { type: "string", format: "uri" },
           pexelsUrl: { type: "string", format: "uri" },
           avgColor: { type: "string", example: "#5A4A32" }
+        },
+        required: ["id", "animal", "source", "title", "image", "imageLarge", "thumbnail"]
+      },
+      ApiInfo: {
+        type: "object",
+        description: "Top-level API metadata returned from the root endpoint.",
+        properties: {
+          name: { type: "string", example: "OrangyAPI" },
+          message: { type: "string", example: "Welcome to OrangyAPI" },
+          endpoints: {
+            type: "object",
+            properties: {
+              docs: { type: "string", example: "/docs" },
+              openApiJson: { type: "string", example: "/docs/openapi.json" },
+              docsJson: { type: "string", example: "/docs/json" },
+              random: { type: "string", example: "/api/random-orangutan" },
+              many: { type: "string", example: "/api/orangutans?count=12" },
+              refresh: { type: "string", example: "/api/refresh-cache" }
+            }
+          }
+        }
+      },
+      HealthResponse: {
+        type: "object",
+        description: "Simple health check response.",
+        properties: {
+          status: { type: "string", example: "ok" }
+        }
+      },
+      DocsSummary: {
+        type: "object",
+        description: "Compact JSON summary of cache state and key routes.",
+        properties: {
+          name: { type: "string", example: "OrangyAPI" },
+          source: { type: "string", example: "Pexels" },
+          cacheSize: { type: "integer", example: 120 },
+          lastUpdated: { type: "string", format: "date-time", nullable: true },
+          endpoints: {
+            type: "object",
+            additionalProperties: { type: "string" }
+          }
+        }
+      },
+      PhotoListResponse: {
+        type: "object",
+        description: "Collection of random orangutan photos.",
+        properties: {
+          count: { type: "integer", example: 6 },
+          images: {
+            type: "array",
+            items: { $ref: "#/components/schemas/Photo" }
+          }
+        }
+      },
+      RefreshResponse: {
+        type: "object",
+        description: "Response returned after a manual cache refresh.",
+        properties: {
+          message: { type: "string", example: "Cache refreshed" },
+          cacheSize: { type: "integer", example: 120 },
+          lastUpdated: { type: "string", format: "date-time" }
         }
       },
       ErrorResponse: {
         type: "object",
+        description: "Standard error payload returned by the API.",
         properties: {
           error: { type: "string" },
           details: { type: "string" }
@@ -83,9 +159,54 @@ const swaggerDefinition = {
       get: {
         tags: ["General"],
         summary: "API information",
+        description: "Returns the service name and a quick route index for the main public endpoints.",
         responses: {
           200: {
-            description: "API metadata and routes"
+            description: "API metadata and routes",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiInfo" },
+                examples: {
+                  default: {
+                    summary: "Root API response",
+                    value: {
+                      name: "OrangyAPI",
+                      message: "Welcome to OrangyAPI",
+                      endpoints: {
+                        docs: "/docs",
+                        openApiJson: "/docs/openapi.json",
+                        docsJson: "/docs/json",
+                        random: "/api/random-orangutan",
+                        many: "/api/orangutans?count=12",
+                        refresh: "/api/refresh-cache"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      get: {
+        tags: ["General"],
+        summary: "Health check",
+        description: "Lightweight endpoint for uptime checks and deployment health probes.",
+        responses: {
+          200: {
+            description: "Service is healthy",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/HealthResponse" },
+                examples: {
+                  default: {
+                    value: { status: "ok" }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -94,9 +215,30 @@ const swaggerDefinition = {
       get: {
         tags: ["General"],
         summary: "Simple docs summary",
+        description: "Returns a compact JSON summary of the API, current cache size, and when the cache was last updated.",
         responses: {
           200: {
-            description: "Basic API docs and cache info"
+            description: "Basic API docs and cache info",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/DocsSummary" },
+                examples: {
+                  default: {
+                    value: {
+                      name: "OrangyAPI",
+                      source: "Pexels",
+                      cacheSize: 120,
+                      lastUpdated: "2026-03-11T12:34:56.000Z",
+                      endpoints: {
+                        "/api/random-orangutan": "Get one random orangutan photo",
+                        "/api/orangutans?count=12": "Get multiple random orangutan photos",
+                        "/api/refresh-cache": "Refresh the photo cache manually"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -105,6 +247,7 @@ const swaggerDefinition = {
       get: {
         tags: ["General"],
         summary: "Raw OpenAPI schema",
+        description: "Returns the OpenAPI document used to power the Swagger UI.",
         responses: {
           200: {
             description: "OpenAPI document"
@@ -116,12 +259,30 @@ const swaggerDefinition = {
       get: {
         tags: ["Orangutans"],
         summary: "Get one random orangutan photo",
+        description: "Returns one random photo from the in-memory orangutan cache. The image URLs point back to this API's proxied image endpoints.",
         responses: {
           200: {
             description: "Random orangutan image object",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/Photo" }
+                schema: { $ref: "#/components/schemas/Photo" },
+                examples: {
+                  default: {
+                    value: {
+                      id: 1996333,
+                      animal: "orangutan",
+                      source: "Pexels",
+                      title: "Orangutan in the jungle",
+                      image: "http://localhost:3000/api/images/1996333",
+                      imageLarge: "http://localhost:3000/api/images/1996333?variant=large",
+                      thumbnail: "http://localhost:3000/api/images/1996333?variant=thumbnail",
+                      photographer: "Jane Doe",
+                      photographerUrl: "https://www.pexels.com/@example",
+                      pexelsUrl: "https://www.pexels.com/photo/example",
+                      avgColor: "#5A4A32"
+                    }
+                  }
+                }
               }
             }
           },
@@ -140,6 +301,7 @@ const swaggerDefinition = {
       get: {
         tags: ["Orangutans"],
         summary: "Get multiple random orangutan photos",
+        description: "Returns up to 24 shuffled orangutan photos from the current cache. Useful for prefetching or gallery-style clients.",
         parameters: [
           {
             name: "count",
@@ -158,13 +320,39 @@ const swaggerDefinition = {
             description: "Random orangutan image collection",
             content: {
               "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    count: { type: "integer" },
-                    images: {
-                      type: "array",
-                      items: { $ref: "#/components/schemas/Photo" }
+                schema: { $ref: "#/components/schemas/PhotoListResponse" },
+                examples: {
+                  default: {
+                    value: {
+                      count: 2,
+                      images: [
+                        {
+                          id: 1996333,
+                          animal: "orangutan",
+                          source: "Pexels",
+                          title: "Orangutan in the jungle",
+                          image: "http://localhost:3000/api/images/1996333",
+                          imageLarge: "http://localhost:3000/api/images/1996333?variant=large",
+                          thumbnail: "http://localhost:3000/api/images/1996333?variant=thumbnail",
+                          photographer: "Jane Doe",
+                          photographerUrl: "https://www.pexels.com/@example",
+                          pexelsUrl: "https://www.pexels.com/photo/example",
+                          avgColor: "#5A4A32"
+                        },
+                        {
+                          id: 2889499,
+                          animal: "orangutan",
+                          source: "Pexels",
+                          title: "Baby orangutan portrait",
+                          image: "http://localhost:3000/api/images/2889499",
+                          imageLarge: "http://localhost:3000/api/images/2889499?variant=large",
+                          thumbnail: "http://localhost:3000/api/images/2889499?variant=thumbnail",
+                          photographer: "John Doe",
+                          photographerUrl: "https://www.pexels.com/@john",
+                          pexelsUrl: "https://www.pexels.com/photo/example-2",
+                          avgColor: "#7A5F40"
+                        }
+                      ]
                     }
                   }
                 }
@@ -182,21 +370,94 @@ const swaggerDefinition = {
         }
       }
     },
+    "/api/images/{photoId}": {
+      get: {
+        tags: ["Images"],
+        summary: "Get a cached image asset by photo ID",
+        description: "Returns the proxied image binary for the requested cached orangutan photo.",
+        parameters: [
+          {
+            name: "photoId",
+            in: "path",
+            required: true,
+            description: "Photo ID returned by one of the orangutan endpoints",
+            schema: {
+              type: "integer",
+              example: 1996333
+            }
+          },
+          {
+            name: "variant",
+            in: "query",
+            required: false,
+            description: "Select the returned image size variant. Omit for the default image.",
+            schema: {
+              type: "string",
+              enum: ["large", "thumbnail"]
+            }
+          }
+        ],
+        responses: {
+          200: {
+            description: "Image binary response",
+            content: {
+              "image/jpeg": {
+                schema: {
+                  type: "string",
+                  format: "binary"
+                }
+              },
+              "image/png": {
+                schema: {
+                  type: "string",
+                  format: "binary"
+                }
+              },
+              "image/webp": {
+                schema: {
+                  type: "string",
+                  format: "binary"
+                }
+              }
+            }
+          },
+          404: {
+            description: "Image not found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          502: {
+            description: "Upstream image fetch failed",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/refresh-cache": {
       get: {
         tags: ["Orangutans"],
         summary: "Refresh cached Pexels results",
+        description: "Forces the backend to refill its in-memory orangutan cache immediately.",
         responses: {
           200: {
             description: "Cache refreshed",
             content: {
               "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    message: { type: "string", example: "Cache refreshed" },
-                    cacheSize: { type: "integer", example: 120 },
-                    lastUpdated: { type: "string", format: "date-time" }
+                schema: { $ref: "#/components/schemas/RefreshResponse" },
+                examples: {
+                  default: {
+                    value: {
+                      message: "Cache refreshed",
+                      cacheSize: 120,
+                      lastUpdated: "2026-03-11T12:34:56.000Z"
+                    }
                   }
                 }
               }
