@@ -8,7 +8,10 @@ const swaggerJsdoc = require("swagger-jsdoc");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const IMAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const IMAGE_CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800";
 
+app.set("trust proxy", true);
 app.use(cors());
 
 const pexels = axios.create({
@@ -21,6 +24,8 @@ const pexels = axios.create({
 
 let orangutanCache = [];
 let lastUpdated = null;
+const imageBinaryCache = new Map();
+const pendingImageFetches = new Map();
 
 const SEARCH_TERMS = [
   "orangutan",
@@ -56,6 +61,8 @@ const swaggerDefinition = {
           source: { type: "string", example: "Pexels" },
           title: { type: "string", example: "Orangutan in the jungle" },
           image: { type: "string", format: "uri" },
+          imageLarge: { type: "string", format: "uri" },
+          thumbnail: { type: "string", format: "uri" },
           photographer: { type: "string", example: "Jane Doe" },
           photographerUrl: { type: "string", format: "uri" },
           pexelsUrl: { type: "string", format: "uri" },
@@ -238,11 +245,42 @@ function normalizePhoto(photo) {
     animal: "orangutan",
     source: "Pexels",
     title: photo.alt || "Orangutan",
-    image: photo.src.large2x || photo.src.large || photo.src.medium,
+    image: photo.src.large || photo.src.medium || photo.src.small,
+    imageLarge: photo.src.large2x || photo.src.large || photo.src.medium,
+    thumbnail: photo.src.medium || photo.src.small || photo.src.tiny,
     photographer: photo.photographer,
     photographerUrl: photo.photographer_url,
     pexelsUrl: photo.url,
-    avgColor: photo.avg_color
+    avgColor: photo.avg_color,
+    imageSource: photo.src.large || photo.src.medium || photo.src.small,
+    imageLargeSource: photo.src.large2x || photo.src.large || photo.src.medium,
+    thumbnailSource: photo.src.medium || photo.src.small || photo.src.tiny
+  };
+}
+
+function getBaseUrl(req) {
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, "");
+  }
+
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+function toPublicPhoto(photo, req) {
+  const baseUrl = getBaseUrl(req);
+
+  return {
+    id: photo.id,
+    animal: photo.animal,
+    source: photo.source,
+    title: photo.title,
+    image: `${baseUrl}/api/images/${photo.id}`,
+    imageLarge: `${baseUrl}/api/images/${photo.id}?variant=large`,
+    thumbnail: `${baseUrl}/api/images/${photo.id}?variant=thumbnail`,
+    photographer: photo.photographer,
+    photographerUrl: photo.photographerUrl,
+    pexelsUrl: photo.pexelsUrl,
+    avgColor: photo.avgColor
   };
 }
 
@@ -288,6 +326,14 @@ async function fillCache() {
 
   orangutanCache = collected;
   lastUpdated = new Date().toISOString();
+  const validIds = new Set(collected.map((photo) => String(photo.id)));
+
+  for (const cacheKey of imageBinaryCache.keys()) {
+    const [photoId] = cacheKey.split(":");
+    if (!validIds.has(photoId)) {
+      imageBinaryCache.delete(cacheKey);
+    }
+  }
 
   console.log(`Cached ${orangutanCache.length} orangutan photos`);
 }
@@ -307,6 +353,61 @@ function getRandomFromCache() {
 
   const randomIndex = Math.floor(Math.random() * orangutanCache.length);
   return orangutanCache[randomIndex];
+}
+
+function getPhotoById(photoId) {
+  return orangutanCache.find((photo) => String(photo.id) === String(photoId));
+}
+
+function getVariantSource(photo, variant) {
+  if (variant === "large") {
+    return photo.imageLargeSource || photo.imageSource;
+  }
+
+  if (variant === "thumbnail") {
+    return photo.thumbnailSource || photo.imageSource;
+  }
+
+  return photo.imageSource;
+}
+
+async function getCachedImageAsset(photo, variant) {
+  const cacheKey = `${photo.id}:${variant}`;
+  const existing = imageBinaryCache.get(cacheKey);
+
+  if (existing && existing.expiresAt > Date.now()) {
+    return existing;
+  }
+
+  const pending = pendingImageFetches.get(cacheKey);
+  if (pending) {
+    return pending;
+  }
+
+  const sourceUrl = getVariantSource(photo, variant);
+
+  if (!sourceUrl) {
+    throw new Error("Image source is missing");
+  }
+
+  const request = axios.get(sourceUrl, {
+    responseType: "arraybuffer",
+    timeout: 15000
+  }).then((response) => {
+    const asset = {
+      buffer: Buffer.from(response.data),
+      contentType: response.headers["content-type"] || "image/jpeg",
+      expiresAt: Date.now() + IMAGE_CACHE_TTL_MS
+    };
+
+    imageBinaryCache.set(cacheKey, asset);
+    return asset;
+  }).finally(() => {
+    pendingImageFetches.delete(cacheKey);
+  });
+
+  pendingImageFetches.set(cacheKey, request);
+  return request;
 }
 
 app.get("/", (req, res) => {
@@ -345,7 +446,8 @@ app.get("/docs/json", (req, res) => {
 app.get("/api/random-orangutan", (req, res) => {
   try {
     const photo = getRandomFromCache();
-    res.json(photo);
+    res.setHeader("Cache-Control", "no-store");
+    res.json(toPublicPhoto(photo, req));
   } catch (error) {
     res.status(500).json({
       error: "Failed to get orangutan image",
@@ -363,13 +465,38 @@ app.get("/api/orangutans", (req, res) => {
     }
 
     const shuffled = [...orangutanCache].sort(() => Math.random() - 0.5);
+    res.setHeader("Cache-Control", "no-store");
     res.json({
       count,
-      images: shuffled.slice(0, count)
+      images: shuffled.slice(0, count).map((photo) => toPublicPhoto(photo, req))
     });
   } catch (error) {
     res.status(500).json({
       error: "Failed to get orangutan images",
+      details: error.message
+    });
+  }
+});
+
+app.get("/api/images/:photoId", async (req, res) => {
+  try {
+    const photo = getPhotoById(req.params.photoId);
+
+    if (!photo) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+
+    const variant = req.query.variant === "large" || req.query.variant === "thumbnail"
+      ? req.query.variant
+      : "default";
+    const asset = await getCachedImageAsset(photo, variant);
+
+    res.setHeader("Content-Type", asset.contentType);
+    res.setHeader("Cache-Control", IMAGE_CACHE_CONTROL);
+    res.send(asset.buffer);
+  } catch (error) {
+    res.status(502).json({
+      error: "Failed to load image",
       details: error.message
     });
   }
