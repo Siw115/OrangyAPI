@@ -241,8 +241,8 @@ export default function App() {
           </section>
 
           <section className="overflow-hidden rounded-[2rem] border border-stone-200/70 bg-white/80 p-4 shadow-[0_24px_80px_rgba(41,37,36,0.12)] backdrop-blur sm:p-5">
-            <div className="flex h-full flex-col rounded-[1.6rem] bg-stone-100/80 p-3 sm:p-4">
-              <div className="relative flex min-h-[420px] flex-1 items-center justify-center overflow-hidden rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.75),rgba(231,229,228,0.95))] sm:min-h-[520px]">
+            <div className="flex h-full min-h-[640px] flex-col rounded-[1.6rem] bg-stone-100/80 p-3 sm:min-h-[720px] sm:p-4">
+              <div className="relative h-[420px] shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.75),rgba(231,229,228,0.95))] sm:h-[520px]">
                 {imageLoading && (
                   <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(231,229,228,0.95)_8%,rgba(255,255,255,0.98)_18%,rgba(231,229,228,0.95)_33%)] bg-[length:200%_100%]" />
                 )}
@@ -251,7 +251,7 @@ export default function App() {
                   <img
                     src={image}
                     alt={title}
-                    className={`h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
+                    className={`block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
                     loading="eager"
                     decoding="async"
                     fetchPriority="high"
@@ -268,7 +268,7 @@ export default function App() {
                 )}
               </div>
 
-              <div className="flex flex-col gap-3 px-2 pb-2 pt-5 sm:px-3">
+              <div className="flex min-h-[120px] flex-col justify-start gap-3 px-2 pb-2 pt-5 sm:min-h-[132px] sm:px-3">
                 <p className="text-xl font-bold tracking-[-0.03em] text-stone-950">
                   {title || "Loading orangutan..."}
                 </p>
