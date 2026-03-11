@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import meImage from "./assets/me.png";
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || "https://orangyapi.onrender.com";
 const API_BASE_URL = (RAW_API_URL.startsWith("http") ? RAW_API_URL : `https://${RAW_API_URL}`).replace(/\/$/, "");
@@ -175,19 +176,19 @@ export default function App() {
   }, [photoQueue]);
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.2),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(20,184,166,0.18),_transparent_28%),linear-gradient(145deg,_#fff7ed_0%,_#fffbeb_38%,_#f7fee7_100%)] px-4 py-8 text-stone-900 sm:px-6 lg:px-8">
+    <div className="page-shell min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.2),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(20,184,166,0.18),_transparent_28%),linear-gradient(145deg,_#fff7ed_0%,_#fffbeb_38%,_#f7fee7_100%)] px-4 py-8 text-stone-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center">
         <main className="grid w-full gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <section className="relative overflow-hidden rounded-[2rem] border border-white/60 bg-white/75 p-8 shadow-[0_24px_80px_rgba(120,53,15,0.12)] backdrop-blur xl:p-10">
-            <div className="absolute -left-12 top-0 h-40 w-40 rounded-full bg-orange-200/40 blur-3xl" />
-            <div className="absolute bottom-0 right-0 h-36 w-36 rounded-full bg-lime-200/50 blur-3xl" />
+          <section className="reveal-up relative overflow-hidden rounded-[2rem] border border-white/60 bg-white/75 p-8 shadow-[0_24px_80px_rgba(120,53,15,0.12)] backdrop-blur xl:p-10">
+            <div className="ambient-orb orb-one absolute -left-12 top-0 h-40 w-40 rounded-full bg-orange-200/40 blur-3xl" />
+            <div className="ambient-orb orb-two absolute bottom-0 right-0 h-36 w-36 rounded-full bg-lime-200/50 blur-3xl" />
 
             <div className="relative flex h-full flex-col">
-              <div className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-orange-700">
+              <div className="badge-pop mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-orange-700">
                 Orangutan Photo API
               </div>
 
-              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-stone-950 text-3xl text-white shadow-lg shadow-orange-200/60">
+              <div className="mascot-bob mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-stone-950 text-3xl text-white shadow-lg shadow-orange-200/60">
                 🦧
               </div>
 
@@ -204,7 +205,9 @@ export default function App() {
                   type="button"
                   onClick={getOrangutan}
                   disabled={loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-stone-950 px-5 py-4 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-70"
+                  className={`randomize-button inline-flex items-center justify-center gap-2 rounded-2xl bg-stone-950 px-5 py-4 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-70 ${
+                    loading ? "is-loading" : ""
+                  }`}
                 >
                   <ShuffleIcon />
                   {loading ? "Randomizing..." : "Randomize"}
@@ -228,7 +231,32 @@ export default function App() {
               )}
 
               <div className="mt-auto pt-8">
-                <div className="rounded-[1.75rem] border border-stone-200/80 bg-stone-950 px-5 py-4 text-sm text-stone-300">
+                <div className="creator-card mb-4 flex items-center gap-4 rounded-[1.5rem] border border-orange-200/70 bg-orange-50/80 p-4">
+                  <img
+                    src={meImage}
+                    alt="Creator portrait"
+                    className="creator-photo h-20 w-20 rounded-2xl object-cover"
+                  />
+                  <div>
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-orange-700">
+                      Created By Me
+                    </p>
+                    <p className="mt-1 text-sm text-stone-700">
+                      Built and styled by the creator of OrangyAPI. Image by{" "}
+                      <a
+                        href="https://humation.app/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-stone-950 underline decoration-orange-300 underline-offset-4"
+                      >
+                        humation.app
+                      </a>
+                      .
+                    </p>
+                  </div>
+                </div>
+
+                <div className="reveal-up reveal-delay-2 rounded-[1.75rem] border border-stone-200/80 bg-stone-950 px-5 py-4 text-sm text-stone-300">
                   <p className="font-semibold uppercase tracking-[0.2em] text-orange-300">
                     Live endpoint
                   </p>
@@ -240,18 +268,19 @@ export default function App() {
             </div>
           </section>
 
-          <section className="overflow-hidden rounded-[2rem] border border-stone-200/70 bg-white/80 p-4 shadow-[0_24px_80px_rgba(41,37,36,0.12)] backdrop-blur sm:p-5">
+          <section className="reveal-up reveal-delay-1 overflow-hidden rounded-[2rem] border border-stone-200/70 bg-white/80 p-4 shadow-[0_24px_80px_rgba(41,37,36,0.12)] backdrop-blur sm:p-5">
             <div className="flex h-[640px] flex-col rounded-[1.6rem] bg-stone-100/80 p-3 sm:h-[720px] sm:p-4">
-              <div className="relative flex h-[420px] shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.75),rgba(231,229,228,0.95))] sm:h-[520px]">
+              <div className="photo-stage relative flex h-[420px] shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.75),rgba(231,229,228,0.95))] sm:h-[520px]">
                 {imageLoading && (
                   <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(231,229,228,0.95)_8%,rgba(255,255,255,0.98)_18%,rgba(231,229,228,0.95)_33%)] bg-[length:200%_100%]" />
                 )}
 
                 {image ? (
                   <img
+                    key={image}
                     src={image}
                     alt={title}
-                    className={`block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
+                    className={`photo-swap block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
                     loading="eager"
                     decoding="async"
                     fetchPriority="high"

@@ -1,0 +1,9 @@
+{
+  "name": "orangyapi",
+  "private": true,
+  "scripts": {
+    "frontend": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "backend": "npm --prefix orangutan-api run start"
+  }
+}

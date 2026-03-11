@@ -35,3 +35,239 @@ button,
 a {
   -webkit-tap-highlight-color: transparent;
 }
+
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes orbDrift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate3d(18px, -16px, 0) scale(1.08);
+  }
+}
+
+@keyframes mascotBob {
+  0%,
+  100% {
+    transform: rotate(-4deg) translateY(0);
+  }
+
+  50% {
+    transform: rotate(4deg) translateY(-8px);
+  }
+}
+
+@keyframes badgePop {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+@keyframes photoSwap {
+  from {
+    opacity: 0;
+    transform: scale(0.94) rotate(-1.5deg);
+    filter: saturate(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: saturate(1);
+  }
+}
+
+@keyframes creatorFloat {
+  0%,
+  100% {
+    transform: rotate(-1.5deg) translateY(0);
+  }
+
+  50% {
+    transform: rotate(1.5deg) translateY(-6px);
+  }
+}
+
+@keyframes buttonSheen {
+  from {
+    transform: translateX(-140%) skewX(-20deg);
+  }
+
+  to {
+    transform: translateX(240%) skewX(-20deg);
+  }
+}
+
+@keyframes buttonPulse {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-2px) scale(1.015);
+  }
+}
+
+@keyframes iconSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.page-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.6) 0, transparent 20%),
+    radial-gradient(circle at 80% 22%, rgba(255, 237, 213, 0.9) 0, transparent 18%),
+    radial-gradient(circle at 70% 78%, rgba(209, 250, 229, 0.65) 0, transparent 16%);
+  opacity: 0.85;
+}
+
+.reveal-up {
+  animation: revealUp 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.reveal-delay-1 {
+  animation-delay: 120ms;
+}
+
+.reveal-delay-2 {
+  animation-delay: 240ms;
+}
+
+.ambient-orb {
+  animation: orbDrift 9s ease-in-out infinite;
+  will-change: transform;
+}
+
+.orb-two {
+  animation-duration: 11s;
+  animation-delay: -2s;
+}
+
+.badge-pop {
+  animation: badgePop 3.8s ease-in-out infinite;
+  transform-origin: left center;
+}
+
+.mascot-bob {
+  animation: mascotBob 4.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.creator-card {
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease,
+    background-color 220ms ease;
+}
+
+.creator-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 36px rgba(249, 115, 22, 0.15);
+  background-color: rgba(255, 247, 237, 0.95);
+}
+
+.creator-photo {
+  animation: creatorFloat 5.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.randomize-button {
+  position: relative;
+  overflow: hidden;
+  transform: translateY(0) rotate(0deg);
+  box-shadow: 0 14px 30px rgba(28, 25, 23, 0.18);
+}
+
+.randomize-button::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background: linear-gradient(
+    115deg,
+    transparent 34%,
+    rgba(255, 255, 255, 0.08) 44%,
+    rgba(255, 255, 255, 0.5) 50%,
+    rgba(255, 255, 255, 0.08) 56%,
+    transparent 66%
+  );
+  transform: translateX(-140%) skewX(-20deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.randomize-button:hover {
+  transform: translateY(-3px) rotate(-1deg);
+  box-shadow: 0 20px 38px rgba(28, 25, 23, 0.24);
+}
+
+.randomize-button:hover::before {
+  opacity: 1;
+  animation: buttonSheen 1.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.randomize-button:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.randomize-button.is-loading {
+  animation: buttonPulse 1s ease-in-out infinite;
+}
+
+.randomize-button.is-loading svg {
+  animation: iconSpin 900ms linear infinite;
+}
+
+.photo-stage::after {
+  content: "";
+  position: absolute;
+  inset: auto 8% 5% 8%;
+  height: 14%;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(24, 24, 27, 0.14) 0, transparent 72%);
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+.photo-swap {
+  animation: photoSwap 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
