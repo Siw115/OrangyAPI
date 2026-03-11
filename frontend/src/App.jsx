@@ -141,6 +141,7 @@ export default function App() {
     }
 
     setImageLoading(true);
+    setImage("");
     await preloadImage(photo.image);
     setImage(photo.image);
     setTitle(photo.title || "Orangutan");
