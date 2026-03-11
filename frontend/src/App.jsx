@@ -188,7 +188,7 @@ export default function App() {
               </div>
 
               <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-stone-950 text-3xl text-white shadow-lg shadow-orange-200/60">
-                O
+                🦧
               </div>
 
               <h1 className="max-w-md text-4xl font-black tracking-[-0.06em] text-stone-950 sm:text-5xl">
@@ -196,7 +196,7 @@ export default function App() {
               </h1>
 
               <p className="mt-5 max-w-lg text-base leading-7 text-stone-600 sm:text-lg">
-                Random orangutan images, fast API responses, and a cleaner front page for exploring the dataset.
+                Fresh orangutan photos, straight from the canopy. Hit randomize for another jungle celebrity, or open the docs for the technical bananas.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
