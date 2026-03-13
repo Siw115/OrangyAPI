@@ -4,14 +4,16 @@
   "description": "Random orangutan image API",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js"
   },
   "keywords": [
     "api",
     "orangutan",
     "images"
   ],
-  "author": "",
+  "author": "Siwani Veerakathy",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.11.0",

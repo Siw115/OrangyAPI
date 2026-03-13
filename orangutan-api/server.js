@@ -149,6 +149,7 @@ const swaggerDefinition = {
         description: "Standard error payload returned by the API.",
         properties: {
           error: { type: "string" },
+          code: { type: "string" },
           details: { type: "string" }
         }
       }
@@ -286,11 +287,37 @@ const swaggerDefinition = {
               }
             }
           },
+          503: {
+            description: "Cache is temporarily unavailable",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+                examples: {
+                  emptyTree: {
+                    value: {
+                      error: "Service unavailable",
+                      code: "EMPTY_TREE",
+                      details: "Tree is empty"
+                    }
+                  }
+                }
+              }
+            }
+          },
           500: {
             description: "Server error",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ErrorResponse" }
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+                examples: {
+                  serverError: {
+                    value: {
+                      error: "Failed to get orangutan image",
+                      code: "IMAGE_FETCH_FAILED",
+                      details: "Unexpected error"
+                    }
+                  }
+                }
               }
             }
           }
@@ -359,11 +386,37 @@ const swaggerDefinition = {
               }
             }
           },
+          503: {
+            description: "Cache is temporarily unavailable",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+                examples: {
+                  emptyTree: {
+                    value: {
+                      error: "Service unavailable",
+                      code: "EMPTY_TREE",
+                      details: "Tree is empty"
+                    }
+                  }
+                }
+              }
+            }
+          },
           500: {
             description: "Server error",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ErrorResponse" }
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+                examples: {
+                  serverError: {
+                    value: {
+                      error: "Failed to get orangutan images",
+                      code: "IMAGE_LIST_FETCH_FAILED",
+                      details: "Unexpected error"
+                    }
+                  }
+                }
               }
             }
           }
@@ -802,6 +855,11 @@ app.get("/api/refresh-cache", async (req, res) => {
 });
 
 async function startServer() {
+  if (!process.env.PEXELS_API_KEY) {
+    console.error("Missing required environment variable: PEXELS_API_KEY");
+    process.exit(1);
+  }
+
   try {
     await fillCache();
   } catch (error) {
