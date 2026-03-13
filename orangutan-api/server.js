@@ -149,6 +149,7 @@ const swaggerDefinition = {
         description: "Standard error payload returned by the API.",
         properties: {
           error: { type: "string" },
+          code: { type: "string" },
           details: { type: "string" }
         }
       }
@@ -286,11 +287,37 @@ const swaggerDefinition = {
               }
             }
           },
+          503: {
+            description: "Cache is temporarily unavailable",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+                examples: {
+                  emptyTree: {
+                    value: {
+                      error: "Service unavailable",
+                      code: "EMPTY_TREE",
+                      details: "Tree is empty"
+                    }
+                  }
+                }
+              }
+            }
+          },
           500: {
             description: "Server error",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ErrorResponse" }
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+                examples: {
+                  serverError: {
+                    value: {
+                      error: "Failed to get orangutan image",
+                      code: "IMAGE_FETCH_FAILED",
+                      details: "Unexpected error"
+                    }
+                  }
+                }
               }
             }
           }
@@ -359,11 +386,37 @@ const swaggerDefinition = {
               }
             }
           },
+          503: {
+            description: "Cache is temporarily unavailable",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+                examples: {
+                  emptyTree: {
+                    value: {
+                      error: "Service unavailable",
+                      code: "EMPTY_TREE",
+                      details: "Tree is empty"
+                    }
+                  }
+                }
+              }
+            }
+          },
           500: {
             description: "Server error",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ErrorResponse" }
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+                examples: {
+                  serverError: {
+                    value: {
+                      error: "Failed to get orangutan images",
+                      code: "IMAGE_LIST_FETCH_FAILED",
+                      details: "Unexpected error"
+                    }
+                  }
+                }
               }
             }
           }
@@ -585,6 +638,10 @@ async function fillCache() {
     }
   }
 
+  if (!collected.length) {
+    throw new Error("Pexels returned no orangutan photos");
+  }
+
   orangutanCache = collected;
   lastUpdated = new Date().toISOString();
   const validIds = new Set(collected.map((photo) => String(photo.id)));
@@ -609,7 +666,7 @@ async function refreshCacheSafe(context = "scheduled refresh") {
 
 function getRandomFromCache() {
   if (!orangutanCache.length) {
-    throw new Error("Cache is empty");
+    throw new Error("Tree is empty");
   }
 
   const randomIndex = Math.floor(Math.random() * orangutanCache.length);
@@ -710,8 +767,17 @@ app.get("/api/random-orangutan", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.json(toPublicPhoto(photo, req));
   } catch (error) {
+    if (error.message === "Tree is empty") {
+      return res.status(503).json({
+        error: "Service unavailable",
+        code: "EMPTY_TREE",
+        details: error.message
+      });
+    }
+
     res.status(500).json({
       error: "Failed to get orangutan image",
+      code: "IMAGE_FETCH_FAILED",
       details: error.message
     });
   }
@@ -722,7 +788,7 @@ app.get("/api/orangutans", (req, res) => {
     const count = Math.min(parseInt(req.query.count, 10) || 6, 24);
 
     if (!orangutanCache.length) {
-      throw new Error("Cache is empty");
+      throw new Error("Tree is empty");
     }
 
     const shuffled = [...orangutanCache].sort(() => Math.random() - 0.5);
@@ -732,8 +798,17 @@ app.get("/api/orangutans", (req, res) => {
       images: shuffled.slice(0, count).map((photo) => toPublicPhoto(photo, req))
     });
   } catch (error) {
+    if (error.message === "Tree is empty") {
+      return res.status(503).json({
+        error: "Service unavailable",
+        code: "EMPTY_TREE",
+        details: error.message
+      });
+    }
+
     res.status(500).json({
       error: "Failed to get orangutan images",
+      code: "IMAGE_LIST_FETCH_FAILED",
       details: error.message
     });
   }
@@ -780,11 +855,21 @@ app.get("/api/refresh-cache", async (req, res) => {
 });
 
 async function startServer() {
+  if (!process.env.PEXELS_API_KEY) {
+    console.error("Missing required environment variable: PEXELS_API_KEY");
+    process.exit(1);
+  }
+
+  try {
+    await fillCache();
+  } catch (error) {
+    console.error("Initial cache fill failed:", error.message);
+    process.exit(1);
+  }
+
   app.listen(PORT, () => {
     console.log(`OrangyAPI running at http://localhost:${PORT}`);
   });
-
-  await refreshCacheSafe("Initial cache fill");
 
   setInterval(() => {
     refreshCacheSafe("Cache refresh");

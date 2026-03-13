@@ -1,16 +1,68 @@
-# React + Vite
+# OrangyAPI Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite frontend for browsing random orangutan photos served by the OrangyAPI backend.
 
-Currently, two official plugins are available:
+## Requirements
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Node.js 20 or newer
+- npm
+- A running OrangyAPI backend
 
-## React Compiler
+## Quick Start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. Install dependencies:
 
-## Expanding the ESLint configuration
+```bash
+npm install
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+2. Optionally create a local `.env` file and set:
+
+```env
+VITE_API_URL=http://localhost:3000
+```
+
+3. Start the dev server:
+
+```bash
+npm run dev
+```
+
+Vite prints the local URL in the terminal.
+
+## Scripts
+
+- `npm run dev`: starts the Vite development server
+- `npm run build`: builds the production bundle
+- `npm run preview`: previews the production build locally
+- `npm run lint`: runs ESLint
+
+## Environment Variables
+
+`VITE_API_URL`
+
+- Optional.
+- Points the frontend at a specific backend.
+- If omitted, the app falls back to the hosted API URL in `src/App.jsx`.
+
+## Frontend Behavior
+
+- The app fetches a batch of orangutan photos from `/api/orangutans`.
+- One image is shown immediately and the rest are kept in a small client-side queue.
+- Images are preloaded before being swapped into view to reduce visible flicker.
+- The Swagger Docs button links to `${VITE_API_URL}/docs`.
+
+## Build Notes
+
+- `vite.config.js` uses `base: "/OrangyAPI/"`.
+- That base path is suitable for GitHub Pages style hosting under `/OrangyAPI/`.
+- If you deploy the frontend at the domain root, update the Vite base path accordingly.
+
+## Troubleshooting
+
+If the frontend loads but no images appear, check:
+
+- the backend is running
+- `VITE_API_URL` points to the correct backend
+- the backend has a valid `PEXELS_API_KEY`
+- the backend is not returning `503` with `EMPTY_TREE`
