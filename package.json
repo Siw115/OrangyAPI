@@ -2,8 +2,10 @@
   "name": "orangyapi",
   "private": true,
   "scripts": {
+    "dev": "node scripts/dev.js",
     "frontend": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build",
-    "backend": "npm --prefix orangutan-api run start"
+    "backend": "npm --prefix orangutan-api run start",
+    "backend:dev": "npm --prefix orangutan-api run dev"
   }
 }

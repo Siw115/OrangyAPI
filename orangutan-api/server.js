@@ -3,6 +3,8 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
+const http = require("http");
+const https = require("https");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
 
@@ -10,16 +12,31 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const IMAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const IMAGE_CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800";
+const PREWARM_IMAGE_COUNT = 12;
+const PREWARM_CONCURRENCY = 3;
 
 app.set("trust proxy", true);
 app.use(cors());
+
+const httpAgent = new http.Agent({ keepAlive: true });
+const httpsAgent = new https.Agent({ keepAlive: true });
 
 const pexels = axios.create({
   baseURL: "https://api.pexels.com/v1",
   headers: {
     Authorization: process.env.PEXELS_API_KEY
   },
-  timeout: 10000
+  timeout: 10000,
+  proxy: false,
+  httpAgent,
+  httpsAgent
+});
+
+const imageFetchClient = axios.create({
+  timeout: 15000,
+  proxy: false,
+  httpAgent,
+  httpsAgent
 });
 
 let orangutanCache = [];
@@ -559,14 +576,14 @@ function normalizePhoto(photo) {
     animal: "orangutan",
     source: "Pexels",
     title: photo.alt || "Orangutan",
-    image: photo.src.large || photo.src.medium || photo.src.small,
+    image: photo.src.medium || photo.src.large || photo.src.small,
     imageLarge: photo.src.large2x || photo.src.large || photo.src.medium,
     thumbnail: photo.src.medium || photo.src.small || photo.src.tiny,
     photographer: photo.photographer,
     photographerUrl: photo.photographer_url,
     pexelsUrl: photo.url,
     avgColor: photo.avg_color,
-    imageSource: photo.src.large || photo.src.medium || photo.src.small,
+    imageSource: photo.src.medium || photo.src.large || photo.src.small,
     imageLargeSource: photo.src.large2x || photo.src.large || photo.src.medium,
     thumbnailSource: photo.src.medium || photo.src.small || photo.src.tiny
   };
@@ -656,12 +673,74 @@ async function fillCache() {
   console.log(`Cached ${orangutanCache.length} orangutan photos`);
 }
 
+async function prewarmImageCache(limit = PREWARM_IMAGE_COUNT) {
+  if (!orangutanCache.length) {
+    return;
+  }
+
+  const photoSample = [...orangutanCache]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, limit);
+  const queue = [...photoSample];
+  const workers = Array.from({ length: PREWARM_CONCURRENCY }, async () => {
+    while (queue.length) {
+      const nextPhoto = queue.shift();
+      if (!nextPhoto) {
+        return;
+      }
+
+      try {
+        await getCachedImageAsset(nextPhoto, "default");
+      } catch (error) {
+        console.warn(`Image prewarm failed for ${nextPhoto.id}: ${error.message}`);
+      }
+    }
+  });
+
+  await Promise.all(workers);
+}
+
 async function refreshCacheSafe(context = "scheduled refresh") {
   try {
     await fillCache();
+    prewarmImageCache().catch((error) => {
+      console.warn(`Prewarm after ${context} failed: ${error.message}`);
+    });
   } catch (error) {
     console.error(`${context} failed:`, error.message);
   }
+}
+
+async function listenWithFallback(startPort, maxAttempts = 6) {
+  let port = Number(startPort) || 3000;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      await new Promise((resolve, reject) => {
+        const server = app.listen(port, () => {
+          console.log(`OrangyAPI running at http://localhost:${port}`);
+          resolve(server);
+        });
+
+        server.on("error", (error) => {
+          server.close(() => {});
+          reject(error);
+        });
+      });
+
+      return;
+    } catch (error) {
+      if (error.code !== "EADDRINUSE") {
+        throw error;
+      }
+
+      const nextPort = port + 1;
+      console.warn(`Port ${port} is busy, retrying on ${nextPort}...`);
+      port = nextPort;
+    }
+  }
+
+  throw new Error(`Could not find an open port after ${maxAttempts} attempts`);
 }
 
 function getRandomFromCache() {
@@ -708,9 +787,8 @@ async function getCachedImageAsset(photo, variant) {
     throw new Error("Image source is missing");
   }
 
-  const request = axios.get(sourceUrl, {
+  const request = imageFetchClient.get(sourceUrl, {
     responseType: "arraybuffer",
-    timeout: 15000
   }).then((response) => {
     const asset = {
       buffer: Buffer.from(response.data),
@@ -867,9 +945,11 @@ async function startServer() {
     process.exit(1);
   }
 
-  app.listen(PORT, () => {
-    console.log(`OrangyAPI running at http://localhost:${PORT}`);
+  prewarmImageCache().catch((error) => {
+    console.warn(`Initial image prewarm failed: ${error.message}`);
   });
+
+  await listenWithFallback(PORT);
 
   setInterval(() => {
     refreshCacheSafe("Cache refresh");
