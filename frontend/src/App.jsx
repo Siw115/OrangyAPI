@@ -1,12 +1,20 @@
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Lottie from "lottie-react";
 import meImage from "./assets/me.png";
+import bananaAnimationData from "./assets/banana-animation.json";
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || "https://orangyapi.onrender.com";
 const API_BASE_URL = (RAW_API_URL.startsWith("http") ? RAW_API_URL : `https://${RAW_API_URL}`).replace(/\/$/, "");
 const RETRY_DELAYS_MS = [600, 1400];
 const PREFETCH_BATCH_SIZE = 6;
 const SWAGGER_URL = `${API_BASE_URL}/docs`;
+const HEALTHCHECK_INTERVAL_MS = 2500;
+const WARMUP_OVERLAY_DELAY_MS = 1200;
+const GAME_DURATION_SECONDS = 20;
+const BANANA_MOVE_BASE_MS = 1100;
+const HIT_COOLDOWN_MS = 90;
+const FORCE_WARMUP_GAME = new URLSearchParams(window.location.search).get("warmupGame") === "1";
 const heroVariants = {
   hidden: { opacity: 0, y: 30, scale: 0.98 },
   visible: {
@@ -97,6 +105,88 @@ export default function App() {
   const [error, setError] = useState("");
   const [photoQueue, setPhotoQueue] = useState([]);
   const [shuffleBurst, setShuffleBurst] = useState(0);
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
+  const [warmupMessage, setWarmupMessage] = useState("Waking up the jungle...");
+  const [bananaScore, setBananaScore] = useState(0);
+  const [combo, setCombo] = useState(0);
+  const [bestCombo, setBestCombo] = useState(0);
+  const [misses, setMisses] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
+  const [roundOver, setRoundOver] = useState(false);
+  const [personalBest, setPersonalBest] = useState(0);
+  const [bananaPosition, setBananaPosition] = useState({ left: 28, top: 52 });
+  const [showSlowLoadOverlay, setShowSlowLoadOverlay] = useState(false);
+  const lastHitAtRef = useRef(0);
+  const overlayVisible = FORCE_WARMUP_GAME || isWarmingUp || showSlowLoadOverlay;
+
+  const moveBanana = () => {
+    setBananaPosition({
+      left: Math.floor(Math.random() * 76) + 8,
+      top: Math.floor(Math.random() * 66) + 12,
+    });
+  };
+
+  const restartMiniGame = () => {
+    setBananaScore(0);
+    setCombo(0);
+    setBestCombo(0);
+    setMisses(0);
+    setTimeLeft(GAME_DURATION_SECONDS);
+    setRoundOver(false);
+    moveBanana();
+  };
+
+  const onCatchBanana = (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    if (roundOver) {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastHitAtRef.current < HIT_COOLDOWN_MS) {
+      return;
+    }
+    lastHitAtRef.current = now;
+
+    setCombo((currentCombo) => {
+      const nextCombo = currentCombo + 1;
+      const comboBonus = Math.floor(nextCombo / 4);
+      setBananaScore((score) => score + 1 + comboBonus);
+      setBestCombo((best) => Math.max(best, nextCombo));
+      return nextCombo;
+    });
+    moveBanana();
+  };
+
+  const onArenaMiss = (event) => {
+    event.preventDefault();
+    if (roundOver) {
+      return;
+    }
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    setMisses((value) => value + 1);
+    setCombo(0);
+    setBananaScore((score) => Math.max(0, score - 1));
+  };
+
+  const checkWarmupState = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/healthz`);
+      const data = await response.json();
+      const warming = data?.status === "warming_up";
+      setIsWarmingUp(warming);
+
+      if (warming && data?.message) {
+        setWarmupMessage(data.message);
+      }
+    } catch {
+      setIsWarmingUp(true);
+      setWarmupMessage("Still reaching the jungle servers...");
+    }
+  };
 
   const preloadImage = async (url) => {
     if (!url) return;
@@ -113,16 +203,32 @@ export default function App() {
 
   const fetchOrangutanBatch = async () => {
     let lastError = null;
+    let delayTimer = null;
+
+    delayTimer = window.setTimeout(() => {
+      setShowSlowLoadOverlay(true);
+      setWarmupMessage("Connection is taking a bit, keep the banana busy...");
+    }, WARMUP_OVERLAY_DELAY_MS);
 
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
       try {
         const response = await fetch(`${API_BASE_URL}/api/orangutans?count=${PREFETCH_BATCH_SIZE}`);
         const data = await response.json();
 
+        if (data?.warmup?.warmingUp || data?.status === "warming_up") {
+          setIsWarmingUp(true);
+          setWarmupMessage(data?.warmup?.message || data?.details || "Warming up...");
+        }
+
         if (!response.ok) {
           throw new Error(data.details || data.error || "Something went wrong");
         }
 
+        setIsWarmingUp(false);
+        setShowSlowLoadOverlay(false);
+        if (delayTimer) {
+          window.clearTimeout(delayTimer);
+        }
         return data.images || [];
       } catch (err) {
         lastError = err;
@@ -132,6 +238,9 @@ export default function App() {
       }
     }
 
+    if (delayTimer) {
+      window.clearTimeout(delayTimer);
+    }
     throw lastError || new Error("Failed to fetch");
   };
 
@@ -183,8 +292,82 @@ export default function App() {
   };
 
   useEffect(() => {
+    checkWarmupState();
     getOrangutan();
   }, []);
+
+  useEffect(() => {
+    if (!isWarmingUp) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      checkWarmupState();
+    }, HEALTHCHECK_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isWarmingUp]);
+
+  useEffect(() => {
+    if (image) {
+      setShowSlowLoadOverlay(false);
+    }
+  }, [image]);
+
+  useEffect(() => {
+    if (!overlayVisible) {
+      return;
+    }
+
+    restartMiniGame();
+  }, [overlayVisible]);
+
+  useEffect(() => {
+    if (!overlayVisible || roundOver) {
+      return;
+    }
+
+    const timerId = window.setInterval(() => {
+      setTimeLeft((remaining) => {
+        if (remaining <= 1) {
+          setRoundOver(true);
+          return 0;
+        }
+
+        return remaining - 1;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [overlayVisible, roundOver]);
+
+  useEffect(() => {
+    if (!overlayVisible || roundOver) {
+      return;
+    }
+
+    const speedStep = Math.min(combo * 70, 600);
+    const moveDelay = Math.max(460, BANANA_MOVE_BASE_MS - speedStep);
+    const moveId = window.setInterval(() => {
+      moveBanana();
+    }, moveDelay);
+
+    return () => {
+      window.clearInterval(moveId);
+    };
+  }, [overlayVisible, roundOver, combo]);
+
+  useEffect(() => {
+    if (!roundOver) {
+      return;
+    }
+
+    setPersonalBest((best) => Math.max(best, bananaScore));
+  }, [roundOver, bananaScore]);
 
   useEffect(() => {
     if (photoQueue.length >= 2) {
@@ -246,6 +429,76 @@ export default function App() {
       }}
     >
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center">
+        <AnimatePresence>
+          {overlayVisible && (
+            <motion.section
+              initial={prefersReducedMotion ? false : { opacity: 0 }}
+              animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+              exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+              className="warmup-overlay"
+              aria-live="polite"
+            >
+              <motion.div
+                initial={prefersReducedMotion ? false : { scale: 0.96, y: 10, opacity: 0 }}
+                animate={prefersReducedMotion ? undefined : { scale: 1, y: 0, opacity: 1 }}
+                exit={prefersReducedMotion ? undefined : { scale: 0.98, y: 6, opacity: 0 }}
+                className="warmup-card"
+              >
+                <p className="warmup-label">Mini-game</p>
+                <h2 className="warmup-title">Catch the banana while OrangyAPI wakes up</h2>
+                <p className="warmup-message">{warmupMessage}</p>
+                <div className="warmup-stats">
+                  <div className="warmup-stat"><span>Time</span><strong>{timeLeft}s</strong></div>
+                  <div className="warmup-stat"><span>Score</span><strong>{bananaScore}</strong></div>
+                  <div className="warmup-stat"><span>Combo</span><strong>x{combo}</strong></div>
+                  <div className="warmup-stat"><span>Misses</span><strong>{misses}</strong></div>
+                </div>
+                <div
+                  className={`warmup-arena ${roundOver ? "is-finished" : ""}`}
+                  onPointerDown={onArenaMiss}
+                >
+                  <motion.button
+                    type="button"
+                    className="banana-button"
+                    animate={{
+                      left: `${bananaPosition.left}%`,
+                      top: `${bananaPosition.top}%`,
+                    }}
+                    transition={
+                      prefersReducedMotion
+                        ? { duration: 0 }
+                        : { type: "spring", stiffness: 380, damping: 26, mass: 0.35 }
+                    }
+                    onPointerDown={onCatchBanana}
+                    aria-label="Catch banana"
+                  >
+                    <Lottie
+                      animationData={bananaAnimationData}
+                      loop
+                      autoplay
+                      className="banana-lottie"
+                    />
+                  </motion.button>
+                  {roundOver && (
+                    <div className="warmup-round-over">
+                      <p className="warmup-round-title">Round complete</p>
+                      <p className="warmup-round-subtitle">
+                        Best combo x{bestCombo} - Personal best {personalBest}
+                      </p>
+                      <button type="button" className="warmup-restart" onClick={restartMiniGame}>
+                        Play again
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <p className="warmup-score">
+                  Tip: hits increase speed. Misses cost 1 point.
+                </p>
+              </motion.div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+
         <main className="grid w-full gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <motion.section
             variants={heroVariants}

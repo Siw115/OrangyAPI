@@ -14,6 +14,7 @@ const IMAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const IMAGE_CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800";
 const PREWARM_IMAGE_COUNT = 12;
 const PREWARM_CONCURRENCY = 3;
+const WARMUP_RETRY_DELAY_MS = 30000;
 
 app.set("trust proxy", true);
 app.use(cors());
@@ -43,6 +44,16 @@ let orangutanCache = [];
 let lastUpdated = null;
 const imageBinaryCache = new Map();
 const pendingImageFetches = new Map();
+let cacheWarmupInProgress = false;
+let startupWarmupError = null;
+const bootTimestamp = Date.now();
+
+const WARMUP_MESSAGES = [
+  "The orangutans are grooming the API cables. Give them a sec.",
+  "Jungle servers are waking up. Bananas are being allocated.",
+  "Warming up tree routes for premium branch-to-branch latency.",
+  "Our orangutan curator is picking the best photos right now."
+];
 
 const SEARCH_TERMS = [
   "orangutan",
@@ -703,11 +714,46 @@ async function prewarmImageCache(limit = PREWARM_IMAGE_COUNT) {
 async function refreshCacheSafe(context = "scheduled refresh") {
   try {
     await fillCache();
+    startupWarmupError = null;
     prewarmImageCache().catch((error) => {
       console.warn(`Prewarm after ${context} failed: ${error.message}`);
     });
   } catch (error) {
     console.error(`${context} failed:`, error.message);
+  }
+}
+
+function getWarmupState() {
+  const warmupUptimeSeconds = Math.floor((Date.now() - bootTimestamp) / 1000);
+  const messageIndex = warmupUptimeSeconds % WARMUP_MESSAGES.length;
+
+  return {
+    warmingUp: true,
+    message: WARMUP_MESSAGES[messageIndex],
+    uptimeSeconds: warmupUptimeSeconds,
+    retryAfterSeconds: 15,
+    docs: "/docs"
+  };
+}
+
+async function warmCacheInBackground() {
+  if (cacheWarmupInProgress || orangutanCache.length) {
+    return;
+  }
+
+  cacheWarmupInProgress = true;
+
+  try {
+    await fillCache();
+    startupWarmupError = null;
+    prewarmImageCache().catch((error) => {
+      console.warn(`Initial image prewarm failed: ${error.message}`);
+    });
+  } catch (error) {
+    startupWarmupError = error.message;
+    console.error("Initial cache warmup failed:", error.message);
+  } finally {
+    cacheWarmupInProgress = false;
   }
 }
 
@@ -807,9 +853,15 @@ async function getCachedImageAsset(photo, variant) {
 }
 
 app.get("/", (req, res) => {
+  const warmupState = !orangutanCache.length ? getWarmupState() : null;
+
   res.json({
     name: "OrangyAPI",
-    message: "Welcome to OrangyAPI",
+    message: warmupState
+      ? "OrangyAPI is waking up"
+      : "Welcome to OrangyAPI",
+    status: warmupState ? "warming_up" : "ready",
+    warmup: warmupState,
     endpoints: {
       docs: "/docs",
       openApiJson: "/docs/openapi.json",
@@ -822,15 +874,30 @@ app.get("/", (req, res) => {
 });
 
 app.get("/healthz", (req, res) => {
+  if (!orangutanCache.length) {
+    const warmupState = getWarmupState();
+    return res.status(200).json({
+      status: "warming_up",
+      ...warmupState,
+      details: startupWarmupError
+        ? "Warmup had a recent error and will retry automatically"
+        : "Service is healthy and warming cache"
+    });
+  }
+
   res.status(200).json({ status: "ok" });
 });
 
 app.get("/docs/json", (req, res) => {
+  const warmupState = !orangutanCache.length ? getWarmupState() : null;
+
   res.json({
     name: "OrangyAPI",
     source: "Pexels",
+    status: warmupState ? "warming_up" : "ready",
     cacheSize: orangutanCache.length,
     lastUpdated,
+    warmup: warmupState,
     endpoints: {
       "/api/random-orangutan": "Get one random orangutan photo",
       "/api/orangutans?count=12": "Get multiple random orangutan photos",
@@ -846,10 +913,13 @@ app.get("/api/random-orangutan", (req, res) => {
     res.json(toPublicPhoto(photo, req));
   } catch (error) {
     if (error.message === "Tree is empty") {
+      const warmupState = getWarmupState();
+      res.setHeader("Retry-After", String(warmupState.retryAfterSeconds));
       return res.status(503).json({
         error: "Service unavailable",
         code: "EMPTY_TREE",
-        details: error.message
+        details: warmupState.message,
+        warmup: warmupState
       });
     }
 
@@ -877,10 +947,13 @@ app.get("/api/orangutans", (req, res) => {
     });
   } catch (error) {
     if (error.message === "Tree is empty") {
+      const warmupState = getWarmupState();
+      res.setHeader("Retry-After", String(warmupState.retryAfterSeconds));
       return res.status(503).json({
         error: "Service unavailable",
         code: "EMPTY_TREE",
-        details: error.message
+        details: warmupState.message,
+        warmup: warmupState
       });
     }
 
@@ -938,18 +1011,14 @@ async function startServer() {
     process.exit(1);
   }
 
-  try {
-    await fillCache();
-  } catch (error) {
-    console.error("Initial cache fill failed:", error.message);
-    process.exit(1);
-  }
-
-  prewarmImageCache().catch((error) => {
-    console.warn(`Initial image prewarm failed: ${error.message}`);
-  });
-
   await listenWithFallback(PORT);
+  await warmCacheInBackground();
+
+  setInterval(() => {
+    if (!orangutanCache.length) {
+      warmCacheInBackground();
+    }
+  }, WARMUP_RETRY_DELAY_MS);
 
   setInterval(() => {
     refreshCacheSafe("Cache refresh");
