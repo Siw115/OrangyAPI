@@ -1,20 +1,19 @@
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
-import Lottie from "lottie-react";
+import { useCallback, useEffect, useState } from "react";
 import meImage from "./assets/me.png";
-import bananaAnimationData from "./assets/banana-animation.json";
+import { WarmupOverlay } from "./components/WarmupOverlay";
+import { useBananaGame } from "./hooks/useBananaGame";
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || "https://orangyapi.onrender.com";
 const API_BASE_URL = (RAW_API_URL.startsWith("http") ? RAW_API_URL : `https://${RAW_API_URL}`).replace(/\/$/, "");
+const SWAGGER_URL = `${API_BASE_URL}/docs`;
+
 const RETRY_DELAYS_MS = [600, 1400];
 const PREFETCH_BATCH_SIZE = 6;
-const SWAGGER_URL = `${API_BASE_URL}/docs`;
 const HEALTHCHECK_INTERVAL_MS = 2500;
 const WARMUP_OVERLAY_DELAY_MS = 1200;
-const GAME_DURATION_SECONDS = 20;
-const BANANA_MOVE_BASE_MS = 1100;
-const HIT_COOLDOWN_MS = 90;
 const FORCE_WARMUP_GAME = new URLSearchParams(window.location.search).get("warmupGame") === "1";
+
 const heroVariants = {
   hidden: { opacity: 0, y: 30, scale: 0.98 },
   visible: {
@@ -24,6 +23,7 @@ const heroVariants = {
     transition: { duration: 0.75, ease: [0.22, 1, 0.36, 1] },
   },
 };
+
 const detailVariants = {
   hidden: { opacity: 0, y: 18 },
   visible: (delay = 0) => ({
@@ -32,6 +32,7 @@ const detailVariants = {
     transition: { delay, duration: 0.55, ease: [0.22, 1, 0.36, 1] },
   }),
 };
+
 const photoVariants = {
   initial: { opacity: 0, scale: 0.9, rotate: -2, filter: "blur(10px) saturate(0.9)" },
   animate: {
@@ -49,6 +50,24 @@ const photoVariants = {
     transition: { duration: 0.3, ease: [0.4, 0, 1, 1] },
   },
 };
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function preloadImage(url) {
+  if (!url) {
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = resolve;
+    img.onerror = reject;
+    img.decoding = "async";
+    img.src = url;
+  });
+}
 
 function ShuffleIcon() {
   return (
@@ -95,6 +114,7 @@ export default function App() {
   const pointerX = useMotionValue(50);
   const pointerY = useMotionValue(50);
   const spotlight = useMotionTemplate`radial-gradient(circle at ${pointerX}% ${pointerY}%, rgba(255, 216, 3, 0.24), transparent 20%), radial-gradient(circle at top left, rgba(255,216,3,0.18), transparent 30%), radial-gradient(circle at bottom right, rgba(186,232,232,0.22), transparent 28%), linear-gradient(145deg, #fffffe 0%, #f7f8fa 42%, #eef3f5 100%)`;
+
   const [image, setImage] = useState("");
   const [title, setTitle] = useState("");
   const [source, setSource] = useState("");
@@ -107,78 +127,18 @@ export default function App() {
   const [shuffleBurst, setShuffleBurst] = useState(0);
   const [isWarmingUp, setIsWarmingUp] = useState(false);
   const [warmupMessage, setWarmupMessage] = useState("Waking up the jungle...");
-  const [bananaScore, setBananaScore] = useState(0);
-  const [combo, setCombo] = useState(0);
-  const [bestCombo, setBestCombo] = useState(0);
-  const [misses, setMisses] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
-  const [roundOver, setRoundOver] = useState(false);
-  const [personalBest, setPersonalBest] = useState(0);
-  const [bananaPosition, setBananaPosition] = useState({ left: 28, top: 52 });
   const [showSlowLoadOverlay, setShowSlowLoadOverlay] = useState(false);
-  const lastHitAtRef = useRef(0);
+
   const overlayVisible = FORCE_WARMUP_GAME || isWarmingUp || showSlowLoadOverlay;
+  const game = useBananaGame(overlayVisible);
 
-  const moveBanana = () => {
-    setBananaPosition({
-      left: Math.floor(Math.random() * 76) + 8,
-      top: Math.floor(Math.random() * 66) + 12,
-    });
-  };
-
-  const restartMiniGame = () => {
-    setBananaScore(0);
-    setCombo(0);
-    setBestCombo(0);
-    setMisses(0);
-    setTimeLeft(GAME_DURATION_SECONDS);
-    setRoundOver(false);
-    moveBanana();
-  };
-
-  const onCatchBanana = (event) => {
-    event.stopPropagation();
-    event.preventDefault();
-    if (roundOver) {
-      return;
-    }
-    const now = Date.now();
-    if (now - lastHitAtRef.current < HIT_COOLDOWN_MS) {
-      return;
-    }
-    lastHitAtRef.current = now;
-
-    setCombo((currentCombo) => {
-      const nextCombo = currentCombo + 1;
-      const comboBonus = Math.floor(nextCombo / 4);
-      setBananaScore((score) => score + 1 + comboBonus);
-      setBestCombo((best) => Math.max(best, nextCombo));
-      return nextCombo;
-    });
-    moveBanana();
-  };
-
-  const onArenaMiss = (event) => {
-    event.preventDefault();
-    if (roundOver) {
-      return;
-    }
-    if (event.target !== event.currentTarget) {
-      return;
-    }
-
-    setMisses((value) => value + 1);
-    setCombo(0);
-    setBananaScore((score) => Math.max(0, score - 1));
-  };
-
-  const checkWarmupState = async () => {
+  const checkWarmupState = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/healthz`);
       const data = await response.json();
       const warming = data?.status === "warming_up";
-      setIsWarmingUp(warming);
 
+      setIsWarmingUp(warming);
       if (warming && data?.message) {
         setWarmupMessage(data.message);
       }
@@ -186,26 +146,11 @@ export default function App() {
       setIsWarmingUp(true);
       setWarmupMessage("Still reaching the jungle servers...");
     }
-  };
+  }, []);
 
-  const preloadImage = async (url) => {
-    if (!url) return;
-    await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = resolve;
-      img.onerror = reject;
-      img.decoding = "async";
-      img.src = url;
-    });
-  };
-
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  const fetchOrangutanBatch = async () => {
+  const fetchOrangutanBatch = useCallback(async () => {
     let lastError = null;
-    let delayTimer = null;
-
-    delayTimer = window.setTimeout(() => {
+    const delayTimer = window.setTimeout(() => {
       setShowSlowLoadOverlay(true);
       setWarmupMessage("Connection is taking a bit, keep the banana busy...");
     }, WARMUP_OVERLAY_DELAY_MS);
@@ -226,9 +171,7 @@ export default function App() {
 
         setIsWarmingUp(false);
         setShowSlowLoadOverlay(false);
-        if (delayTimer) {
-          window.clearTimeout(delayTimer);
-        }
+        window.clearTimeout(delayTimer);
         return data.images || [];
       } catch (err) {
         lastError = err;
@@ -238,13 +181,11 @@ export default function App() {
       }
     }
 
-    if (delayTimer) {
-      window.clearTimeout(delayTimer);
-    }
+    window.clearTimeout(delayTimer);
     throw lastError || new Error("Failed to fetch");
-  };
+  }, []);
 
-  const applyPhoto = async (photo) => {
+  const applyPhoto = useCallback(async (photo) => {
     if (!photo?.image) {
       throw new Error("Missing image");
     }
@@ -257,22 +198,20 @@ export default function App() {
     setSource(photo.source || "");
     setPhotographer(photo.photographer || "");
     setPexelsUrl(photo.pexelsUrl || "");
-  };
+  }, []);
 
-  const getOrangutan = async () => {
+  const getOrangutan = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
       setShuffleBurst((count) => count + 1);
 
       let nextPhoto = null;
-
       setPhotoQueue((currentQueue) => {
         if (currentQueue.length > 0) {
           [nextPhoto] = currentQueue;
           return currentQueue.slice(1);
         }
-
         return currentQueue;
       });
 
@@ -283,18 +222,18 @@ export default function App() {
       }
 
       await applyPhoto(nextPhoto);
-    } catch (err) {
+    } catch {
       setError(`Temporary connection issue. Try again. (API: ${API_BASE_URL})`);
       setImageLoading(false);
     } finally {
       setLoading(false);
     }
-  };
+  }, [applyPhoto, fetchOrangutanBatch]);
 
   useEffect(() => {
     checkWarmupState();
     getOrangutan();
-  }, []);
+  }, [checkWarmupState, getOrangutan]);
 
   useEffect(() => {
     if (!isWarmingUp) {
@@ -305,69 +244,14 @@ export default function App() {
       checkWarmupState();
     }, HEALTHCHECK_INTERVAL_MS);
 
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [isWarmingUp]);
+    return () => window.clearInterval(intervalId);
+  }, [checkWarmupState, isWarmingUp]);
 
   useEffect(() => {
     if (image) {
       setShowSlowLoadOverlay(false);
     }
   }, [image]);
-
-  useEffect(() => {
-    if (!overlayVisible) {
-      return;
-    }
-
-    restartMiniGame();
-  }, [overlayVisible]);
-
-  useEffect(() => {
-    if (!overlayVisible || roundOver) {
-      return;
-    }
-
-    const timerId = window.setInterval(() => {
-      setTimeLeft((remaining) => {
-        if (remaining <= 1) {
-          setRoundOver(true);
-          return 0;
-        }
-
-        return remaining - 1;
-      });
-    }, 1000);
-
-    return () => {
-      window.clearInterval(timerId);
-    };
-  }, [overlayVisible, roundOver]);
-
-  useEffect(() => {
-    if (!overlayVisible || roundOver) {
-      return;
-    }
-
-    const speedStep = Math.min(combo * 70, 600);
-    const moveDelay = Math.max(460, BANANA_MOVE_BASE_MS - speedStep);
-    const moveId = window.setInterval(() => {
-      moveBanana();
-    }, moveDelay);
-
-    return () => {
-      window.clearInterval(moveId);
-    };
-  }, [overlayVisible, roundOver, combo]);
-
-  useEffect(() => {
-    if (!roundOver) {
-      return;
-    }
-
-    setPersonalBest((best) => Math.max(best, bananaScore));
-  }, [roundOver, bananaScore]);
 
   useEffect(() => {
     if (photoQueue.length >= 2) {
@@ -398,7 +282,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [photoQueue]);
+  }, [fetchOrangutanBatch, photoQueue]);
 
   useEffect(() => {
     if (!shuffleBurst) {
@@ -430,73 +314,12 @@ export default function App() {
     >
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center">
         <AnimatePresence>
-          {overlayVisible && (
-            <motion.section
-              initial={prefersReducedMotion ? false : { opacity: 0 }}
-              animate={prefersReducedMotion ? undefined : { opacity: 1 }}
-              exit={prefersReducedMotion ? undefined : { opacity: 0 }}
-              className="warmup-overlay"
-              aria-live="polite"
-            >
-              <motion.div
-                initial={prefersReducedMotion ? false : { scale: 0.96, y: 10, opacity: 0 }}
-                animate={prefersReducedMotion ? undefined : { scale: 1, y: 0, opacity: 1 }}
-                exit={prefersReducedMotion ? undefined : { scale: 0.98, y: 6, opacity: 0 }}
-                className="warmup-card"
-              >
-                <p className="warmup-label">Mini-game</p>
-                <h2 className="warmup-title">Catch the banana while OrangyAPI wakes up</h2>
-                <p className="warmup-message">{warmupMessage}</p>
-                <div className="warmup-stats">
-                  <div className="warmup-stat"><span>Time</span><strong>{timeLeft}s</strong></div>
-                  <div className="warmup-stat"><span>Score</span><strong>{bananaScore}</strong></div>
-                  <div className="warmup-stat"><span>Combo</span><strong>x{combo}</strong></div>
-                  <div className="warmup-stat"><span>Misses</span><strong>{misses}</strong></div>
-                </div>
-                <div
-                  className={`warmup-arena ${roundOver ? "is-finished" : ""}`}
-                  onPointerDown={onArenaMiss}
-                >
-                  <motion.button
-                    type="button"
-                    className="banana-button"
-                    animate={{
-                      left: `${bananaPosition.left}%`,
-                      top: `${bananaPosition.top}%`,
-                    }}
-                    transition={
-                      prefersReducedMotion
-                        ? { duration: 0 }
-                        : { type: "spring", stiffness: 380, damping: 26, mass: 0.35 }
-                    }
-                    onPointerDown={onCatchBanana}
-                    aria-label="Catch banana"
-                  >
-                    <Lottie
-                      animationData={bananaAnimationData}
-                      loop
-                      autoplay
-                      className="banana-lottie"
-                    />
-                  </motion.button>
-                  {roundOver && (
-                    <div className="warmup-round-over">
-                      <p className="warmup-round-title">Round complete</p>
-                      <p className="warmup-round-subtitle">
-                        Best combo x{bestCombo} - Personal best {personalBest}
-                      </p>
-                      <button type="button" className="warmup-restart" onClick={restartMiniGame}>
-                        Play again
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <p className="warmup-score">
-                  Tip: hits increase speed. Misses cost 1 point.
-                </p>
-              </motion.div>
-            </motion.section>
-          )}
+          <WarmupOverlay
+            visible={overlayVisible}
+            prefersReducedMotion={prefersReducedMotion}
+            warmupMessage={warmupMessage}
+            game={game}
+          />
         </AnimatePresence>
 
         <main className="grid w-full gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -529,7 +352,7 @@ export default function App() {
                 whileHover={prefersReducedMotion ? undefined : { rotate: 8, scale: 1.08 }}
                 className="mascot-bob mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-[#272343] text-3xl text-[#fffffe] shadow-lg shadow-[#bae8e8]/70"
               >
-                🦧
+                O
               </motion.div>
 
               <motion.h1
@@ -565,9 +388,7 @@ export default function App() {
                   disabled={loading}
                   whileHover={prefersReducedMotion ? undefined : { y: -5, scale: 1.02, rotate: -1 }}
                   whileTap={prefersReducedMotion ? undefined : { scale: 0.97, y: 1 }}
-                  className={`randomize-button inline-flex items-center justify-center gap-2 rounded-2xl bg-[#ffd803] px-5 py-4 text-sm font-semibold text-[#272343] transition hover:bg-[#f6cf00] disabled:cursor-not-allowed disabled:opacity-70 ${
-                    loading ? "is-loading" : ""
-                  }`}
+                  className={`randomize-button inline-flex items-center justify-center gap-2 rounded-2xl bg-[#ffd803] px-5 py-4 text-sm font-semibold text-[#272343] transition hover:bg-[#f6cf00] disabled:cursor-not-allowed disabled:opacity-70 ${loading ? "is-loading" : ""}`}
                 >
                   <ShuffleIcon />
                   {loading ? "Randomizing..." : "Randomize"}
@@ -684,43 +505,43 @@ export default function App() {
                   Featured orangutan
                 </div>
                 <div className="photo-well relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[1.15rem] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98),_rgba(242,247,247,0.96)_58%,_rgba(227,246,245,0.9)_100%)] px-4 py-5 sm:px-6">
-                {imageLoading && (
-                  <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(231,229,228,0.95)_8%,rgba(255,255,255,0.98)_18%,rgba(231,229,228,0.95)_33%)] bg-[length:200%_100%]" />
-                )}
+                  {imageLoading && (
+                    <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(231,229,228,0.95)_8%,rgba(255,255,255,0.98)_18%,rgba(231,229,228,0.95)_33%)] bg-[length:200%_100%]" />
+                  )}
 
-                {image ? (
-                  <AnimatePresence mode="wait">
-                    <motion.img
-                      key={image}
-                      variants={prefersReducedMotion ? undefined : photoVariants}
-                      initial={prefersReducedMotion ? false : "initial"}
-                      animate={prefersReducedMotion ? undefined : "animate"}
-                      exit={prefersReducedMotion ? undefined : "exit"}
-                      src={image}
-                      alt={title}
-                      className={`block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
-                      loading="eager"
-                      decoding="async"
-                      fetchPriority="high"
-                      onLoad={() => setImageLoading(false)}
-                      onError={() => {
-                        setImageLoading(false);
-                        setError("Could not load image");
-                      }}
-                    />
-                  </AnimatePresence>
-                ) : (
-                  <p className="px-6 text-center text-sm font-medium text-[#2d334a]">
-                    Loading orangutan...
-                  </p>
-                )}
+                  {image ? (
+                    <AnimatePresence mode="wait">
+                      <motion.img
+                        key={image}
+                        variants={prefersReducedMotion ? undefined : photoVariants}
+                        initial={prefersReducedMotion ? false : "initial"}
+                        animate={prefersReducedMotion ? undefined : "animate"}
+                        exit={prefersReducedMotion ? undefined : "exit"}
+                        src={image}
+                        alt={title}
+                        className={`block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
+                        loading="eager"
+                        decoding="async"
+                        fetchPriority="high"
+                        onLoad={() => setImageLoading(false)}
+                        onError={() => {
+                          setImageLoading(false);
+                          setError("Could not load image");
+                        }}
+                      />
+                    </AnimatePresence>
+                  ) : (
+                    <p className="px-6 text-center text-sm font-medium text-[#2d334a]">
+                      Loading orangutan...
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="photo-caption mt-4 flex min-h-[132px] shrink-0 flex-col justify-start gap-3 rounded-[1.3rem] border border-white/70 bg-white/86 px-4 py-4 shadow-[0_16px_34px_rgba(39,35,67,0.07)] sm:min-h-[144px] sm:px-5">
                 <div className="flex items-start justify-between gap-4">
                   <p className="text-xl font-bold tracking-[-0.03em] text-[#272343]">
-                  {title || "Loading orangutan..."}
+                    {title || "Loading orangutan..."}
                   </p>
                   <span className="rounded-full bg-[#e3f6f5] px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[#272343]">
                     Photo
