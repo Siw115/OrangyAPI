@@ -1,12 +1,12 @@
 # Orangutan API
 
-Express API for serving random orangutan photos from Pexels with an in-memory metadata cache and proxied image endpoints.
+Express API for serving random orangutan photos from Pexels and Pixabay with an in-memory metadata cache and proxied image endpoints.
 
 ## Requirements
 
 - Node.js 20 or newer
 - npm
-- A valid Pexels API key
+- A valid Pexels API key or Pixabay API key
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ npm install
 
 2. Copy `.env.example` to `.env`.
 
-3. Set `PEXELS_API_KEY` in `.env`.
+3. Set at least one provider key in `.env` (`PEXELS_API_KEY` and/or `PIXABAY_API_KEY`).
 
 4. Start the API:
 
@@ -32,9 +32,15 @@ The service listens on `http://localhost:3000` by default.
 
 `PEXELS_API_KEY`
 
-- Required.
+- Optional (if `PIXABAY_API_KEY` is set).
 - Used for all Pexels API requests.
-- The server exits on startup if this variable is missing.
+
+`PIXABAY_API_KEY`
+
+- Optional (if `PEXELS_API_KEY` is set).
+- Used for all Pixabay API requests.
+
+At least one provider key is required. The server exits on startup if both are missing.
 
 `PORT`
 
@@ -91,7 +97,7 @@ The service listens on `http://localhost:3000` by default.
 
 `GET /api/refresh-cache`
 
-- Forces an immediate metadata refresh from Pexels.
+- Forces an immediate metadata refresh from enabled providers.
 
 ## Error Behavior
 
@@ -120,6 +126,6 @@ Common codes:
 
 ## Developer Notes
 
-- The API is JSON-first; image URLs point back to this service instead of directly exposing Pexels asset URLs.
+- The API is JSON-first; image URLs point back to this service instead of directly exposing provider asset URLs.
 - Swagger docs are generated in-process from the route definitions in `server.js`.
-- If startup fails, check the logs first for missing credentials, Pexels timeouts, or upstream failures.
+- If startup fails, check the logs first for missing credentials, provider timeouts, or upstream failures.
