@@ -352,7 +352,7 @@ export default function App() {
                 whileHover={prefersReducedMotion ? undefined : { rotate: 8, scale: 1.08 }}
                 className="mascot-bob mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-[#272343] text-3xl text-[#fffffe] shadow-lg shadow-[#bae8e8]/70"
               >
-                O
+                🦧
               </motion.div>
 
               <motion.h1
