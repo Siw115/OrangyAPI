@@ -1,12 +1,19 @@
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import meImage from "./assets/me.png";
+import { WarmupOverlay } from "./components/WarmupOverlay";
+import { useBananaGame } from "./hooks/useBananaGame";
 
 const RAW_API_URL = import.meta.env.VITE_API_URL || "https://orangyapi.onrender.com";
 const API_BASE_URL = (RAW_API_URL.startsWith("http") ? RAW_API_URL : `https://${RAW_API_URL}`).replace(/\/$/, "");
+const SWAGGER_URL = `${API_BASE_URL}/docs`;
+
 const RETRY_DELAYS_MS = [600, 1400];
 const PREFETCH_BATCH_SIZE = 6;
-const SWAGGER_URL = `${API_BASE_URL}/docs`;
+const HEALTHCHECK_INTERVAL_MS = 2500;
+const WARMUP_OVERLAY_DELAY_MS = 1200;
+const FORCE_WARMUP_GAME = new URLSearchParams(window.location.search).get("warmupGame") === "1";
+
 const heroVariants = {
   hidden: { opacity: 0, y: 30, scale: 0.98 },
   visible: {
@@ -16,6 +23,7 @@ const heroVariants = {
     transition: { duration: 0.75, ease: [0.22, 1, 0.36, 1] },
   },
 };
+
 const detailVariants = {
   hidden: { opacity: 0, y: 18 },
   visible: (delay = 0) => ({
@@ -24,6 +32,7 @@ const detailVariants = {
     transition: { delay, duration: 0.55, ease: [0.22, 1, 0.36, 1] },
   }),
 };
+
 const photoVariants = {
   initial: { opacity: 0, scale: 0.9, rotate: -2, filter: "blur(10px) saturate(0.9)" },
   animate: {
@@ -41,6 +50,24 @@ const photoVariants = {
     transition: { duration: 0.3, ease: [0.4, 0, 1, 1] },
   },
 };
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function preloadImage(url) {
+  if (!url) {
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = resolve;
+    img.onerror = reject;
+    img.decoding = "async";
+    img.src = url;
+  });
+}
 
 function ShuffleIcon() {
   return (
@@ -87,6 +114,7 @@ export default function App() {
   const pointerX = useMotionValue(50);
   const pointerY = useMotionValue(50);
   const spotlight = useMotionTemplate`radial-gradient(circle at ${pointerX}% ${pointerY}%, rgba(255, 216, 3, 0.24), transparent 20%), radial-gradient(circle at top left, rgba(255,216,3,0.18), transparent 30%), radial-gradient(circle at bottom right, rgba(186,232,232,0.22), transparent 28%), linear-gradient(145deg, #fffffe 0%, #f7f8fa 42%, #eef3f5 100%)`;
+
   const [image, setImage] = useState("");
   const [title, setTitle] = useState("");
   const [source, setSource] = useState("");
@@ -97,32 +125,53 @@ export default function App() {
   const [error, setError] = useState("");
   const [photoQueue, setPhotoQueue] = useState([]);
   const [shuffleBurst, setShuffleBurst] = useState(0);
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
+  const [warmupMessage, setWarmupMessage] = useState("Waking up the jungle...");
+  const [showSlowLoadOverlay, setShowSlowLoadOverlay] = useState(false);
 
-  const preloadImage = async (url) => {
-    if (!url) return;
-    await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = resolve;
-      img.onerror = reject;
-      img.decoding = "async";
-      img.src = url;
-    });
-  };
+  const overlayVisible = FORCE_WARMUP_GAME || isWarmingUp || showSlowLoadOverlay;
+  const game = useBananaGame(overlayVisible);
 
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const checkWarmupState = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/healthz`);
+      const data = await response.json();
+      const warming = data?.status === "warming_up";
 
-  const fetchOrangutanBatch = async () => {
+      setIsWarmingUp(warming);
+      if (warming && data?.message) {
+        setWarmupMessage(data.message);
+      }
+    } catch {
+      setIsWarmingUp(true);
+      setWarmupMessage("Still reaching the jungle servers...");
+    }
+  }, []);
+
+  const fetchOrangutanBatch = useCallback(async () => {
     let lastError = null;
+    const delayTimer = window.setTimeout(() => {
+      setShowSlowLoadOverlay(true);
+      setWarmupMessage("Connection is taking a bit, keep the banana busy...");
+    }, WARMUP_OVERLAY_DELAY_MS);
 
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
       try {
         const response = await fetch(`${API_BASE_URL}/api/orangutans?count=${PREFETCH_BATCH_SIZE}`);
         const data = await response.json();
 
+        if (data?.warmup?.warmingUp || data?.status === "warming_up") {
+          setIsWarmingUp(true);
+          setWarmupMessage(data?.warmup?.message || data?.details || "Warming up...");
+        }
+
         if (!response.ok) {
           throw new Error(data.details || data.error || "Something went wrong");
         }
 
+        setIsWarmingUp(false);
+        setShowSlowLoadOverlay(false);
+        window.clearTimeout(delayTimer);
         return data.images || [];
       } catch (err) {
         lastError = err;
@@ -132,10 +181,11 @@ export default function App() {
       }
     }
 
+    window.clearTimeout(delayTimer);
     throw lastError || new Error("Failed to fetch");
-  };
+  }, []);
 
-  const applyPhoto = async (photo) => {
+  const applyPhoto = useCallback(async (photo) => {
     if (!photo?.image) {
       throw new Error("Missing image");
     }
@@ -148,22 +198,20 @@ export default function App() {
     setSource(photo.source || "");
     setPhotographer(photo.photographer || "");
     setPexelsUrl(photo.pexelsUrl || "");
-  };
+  }, []);
 
-  const getOrangutan = async () => {
+  const getOrangutan = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
       setShuffleBurst((count) => count + 1);
 
       let nextPhoto = null;
-
       setPhotoQueue((currentQueue) => {
         if (currentQueue.length > 0) {
           [nextPhoto] = currentQueue;
           return currentQueue.slice(1);
         }
-
         return currentQueue;
       });
 
@@ -174,17 +222,36 @@ export default function App() {
       }
 
       await applyPhoto(nextPhoto);
-    } catch (err) {
+    } catch {
       setError(`Temporary connection issue. Try again. (API: ${API_BASE_URL})`);
       setImageLoading(false);
     } finally {
       setLoading(false);
     }
-  };
+  }, [applyPhoto, fetchOrangutanBatch]);
 
   useEffect(() => {
+    checkWarmupState();
     getOrangutan();
-  }, []);
+  }, [checkWarmupState, getOrangutan]);
+
+  useEffect(() => {
+    if (!isWarmingUp) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      checkWarmupState();
+    }, HEALTHCHECK_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [checkWarmupState, isWarmingUp]);
+
+  useEffect(() => {
+    if (image) {
+      setShowSlowLoadOverlay(false);
+    }
+  }, [image]);
 
   useEffect(() => {
     if (photoQueue.length >= 2) {
@@ -215,7 +282,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [photoQueue]);
+  }, [fetchOrangutanBatch, photoQueue]);
 
   useEffect(() => {
     if (!shuffleBurst) {
@@ -246,6 +313,15 @@ export default function App() {
       }}
     >
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center">
+        <AnimatePresence>
+          <WarmupOverlay
+            visible={overlayVisible}
+            prefersReducedMotion={prefersReducedMotion}
+            warmupMessage={warmupMessage}
+            game={game}
+          />
+        </AnimatePresence>
+
         <main className="grid w-full gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <motion.section
             variants={heroVariants}
@@ -276,7 +352,7 @@ export default function App() {
                 whileHover={prefersReducedMotion ? undefined : { rotate: 8, scale: 1.08 }}
                 className="mascot-bob mb-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-[#272343] text-3xl text-[#fffffe] shadow-lg shadow-[#bae8e8]/70"
               >
-                🦧
+                O
               </motion.div>
 
               <motion.h1
@@ -312,9 +388,7 @@ export default function App() {
                   disabled={loading}
                   whileHover={prefersReducedMotion ? undefined : { y: -5, scale: 1.02, rotate: -1 }}
                   whileTap={prefersReducedMotion ? undefined : { scale: 0.97, y: 1 }}
-                  className={`randomize-button inline-flex items-center justify-center gap-2 rounded-2xl bg-[#ffd803] px-5 py-4 text-sm font-semibold text-[#272343] transition hover:bg-[#f6cf00] disabled:cursor-not-allowed disabled:opacity-70 ${
-                    loading ? "is-loading" : ""
-                  }`}
+                  className={`randomize-button inline-flex items-center justify-center gap-2 rounded-2xl bg-[#ffd803] px-5 py-4 text-sm font-semibold text-[#272343] transition hover:bg-[#f6cf00] disabled:cursor-not-allowed disabled:opacity-70 ${loading ? "is-loading" : ""}`}
                 >
                   <ShuffleIcon />
                   {loading ? "Randomizing..." : "Randomize"}
@@ -431,43 +505,43 @@ export default function App() {
                   Featured orangutan
                 </div>
                 <div className="photo-well relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[1.15rem] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.98),_rgba(242,247,247,0.96)_58%,_rgba(227,246,245,0.9)_100%)] px-4 py-5 sm:px-6">
-                {imageLoading && (
-                  <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(231,229,228,0.95)_8%,rgba(255,255,255,0.98)_18%,rgba(231,229,228,0.95)_33%)] bg-[length:200%_100%]" />
-                )}
+                  {imageLoading && (
+                    <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(231,229,228,0.95)_8%,rgba(255,255,255,0.98)_18%,rgba(231,229,228,0.95)_33%)] bg-[length:200%_100%]" />
+                  )}
 
-                {image ? (
-                  <AnimatePresence mode="wait">
-                    <motion.img
-                      key={image}
-                      variants={prefersReducedMotion ? undefined : photoVariants}
-                      initial={prefersReducedMotion ? false : "initial"}
-                      animate={prefersReducedMotion ? undefined : "animate"}
-                      exit={prefersReducedMotion ? undefined : "exit"}
-                      src={image}
-                      alt={title}
-                      className={`block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
-                      loading="eager"
-                      decoding="async"
-                      fetchPriority="high"
-                      onLoad={() => setImageLoading(false)}
-                      onError={() => {
-                        setImageLoading(false);
-                        setError("Could not load image");
-                      }}
-                    />
-                  </AnimatePresence>
-                ) : (
-                  <p className="px-6 text-center text-sm font-medium text-[#2d334a]">
-                    Loading orangutan...
-                  </p>
-                )}
+                  {image ? (
+                    <AnimatePresence mode="wait">
+                      <motion.img
+                        key={image}
+                        variants={prefersReducedMotion ? undefined : photoVariants}
+                        initial={prefersReducedMotion ? false : "initial"}
+                        animate={prefersReducedMotion ? undefined : "animate"}
+                        exit={prefersReducedMotion ? undefined : "exit"}
+                        src={image}
+                        alt={title}
+                        className={`block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
+                        loading="eager"
+                        decoding="async"
+                        fetchPriority="high"
+                        onLoad={() => setImageLoading(false)}
+                        onError={() => {
+                          setImageLoading(false);
+                          setError("Could not load image");
+                        }}
+                      />
+                    </AnimatePresence>
+                  ) : (
+                    <p className="px-6 text-center text-sm font-medium text-[#2d334a]">
+                      Loading orangutan...
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div className="photo-caption mt-4 flex min-h-[132px] shrink-0 flex-col justify-start gap-3 rounded-[1.3rem] border border-white/70 bg-white/86 px-4 py-4 shadow-[0_16px_34px_rgba(39,35,67,0.07)] sm:min-h-[144px] sm:px-5">
                 <div className="flex items-start justify-between gap-4">
                   <p className="text-xl font-bold tracking-[-0.03em] text-[#272343]">
-                  {title || "Loading orangutan..."}
+                    {title || "Loading orangutan..."}
                   </p>
                   <span className="rounded-full bg-[#e3f6f5] px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[#272343]">
                     Photo

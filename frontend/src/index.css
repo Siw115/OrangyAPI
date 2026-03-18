@@ -243,6 +243,205 @@ a {
   backdrop-filter: blur(14px);
 }
 
+.warmup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(255, 216, 3, 0.16), transparent 22%),
+    radial-gradient(circle at 84% 80%, rgba(186, 232, 232, 0.22), transparent 24%),
+    rgba(39, 35, 67, 0.32);
+  backdrop-filter: blur(7px);
+}
+
+.warmup-card {
+  width: min(680px, 100%);
+  border-radius: 1.6rem;
+  border: 1px solid rgba(39, 35, 67, 0.22);
+  background: linear-gradient(160deg, rgba(255, 255, 254, 0.98), rgba(227, 246, 245, 0.94));
+  box-shadow: 0 34px 80px rgba(39, 35, 67, 0.25);
+  padding: 1.15rem;
+}
+
+.warmup-label {
+  display: inline-block;
+  margin: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(39, 35, 67, 0.22);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.warmup-title {
+  margin: 0.6rem 0 0;
+  font-size: clamp(1.3rem, 2vw, 1.65rem);
+  line-height: 1.18;
+}
+
+.warmup-message {
+  margin: 0.4rem 0 0.9rem;
+  font-size: 0.95rem;
+  color: #2d334a;
+}
+
+.warmup-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0 0 0.8rem;
+}
+
+.warmup-stat {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.45rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(39, 35, 67, 0.15);
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.42rem 0.6rem;
+  font-size: 0.76rem;
+  line-height: 1.1;
+  color: #4d536a;
+}
+
+.warmup-stat strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #272343;
+}
+
+.warmup-arena {
+  position: relative;
+  height: 210px;
+  border-radius: 1.2rem;
+  border: 1px dashed rgba(39, 35, 67, 0.3);
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.96), rgba(247, 248, 250, 0.98)),
+    repeating-linear-gradient(
+      135deg,
+      rgba(39, 35, 67, 0.015) 0 8px,
+      transparent 8px 16px
+    );
+  overflow: hidden;
+  touch-action: manipulation;
+  user-select: none;
+  cursor: crosshair;
+}
+
+.warmup-arena.is-finished::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(39, 35, 67, 0.2);
+}
+
+.banana-button {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border: 0;
+  width: 78px;
+  height: 78px;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: none;
+  transition: transform 90ms ease;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  will-change: transform;
+}
+
+.banana-button:hover {
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.banana-button:active {
+  transform: translate(-50%, -50%) scale(0.96);
+}
+
+.banana-button::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+}
+
+.banana-lottie {
+  width: 56px;
+  height: 56px;
+  display: block;
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.banana-lottie canvas,
+.banana-lottie svg {
+  width: 56px !important;
+  height: 56px !important;
+  display: block;
+}
+
+.warmup-round-over {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+  gap: 0.65rem;
+  padding: 1rem;
+}
+
+.warmup-round-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #fffffe;
+}
+
+.warmup-round-subtitle {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #e3f6f5;
+}
+
+.warmup-restart {
+  border: 0;
+  border-radius: 999px;
+  background: #ffd803;
+  color: #272343;
+  font-weight: 800;
+  padding: 0.5rem 0.95rem;
+  cursor: pointer;
+}
+
+.warmup-score {
+  margin: 0.85rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .warmup-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
