@@ -4,7 +4,7 @@ OrangyAPI is a small full-stack project for serving and browsing random oranguta
 
 The repository contains two apps:
 
-- `orangutan-api/`: Express API that fetches orangutan photos from Pexels, caches metadata in memory, and exposes JSON plus Swagger docs
+- `orangutan-api/`: Express API that fetches orangutan photos from Pexels, Pixabay, and Unsplash, caches metadata in memory, and exposes JSON plus Swagger docs
 - `frontend/`: React + Vite frontend that consumes the API
 
 ## Repo Structure
@@ -21,7 +21,7 @@ The repository contains two apps:
 
 - Node.js 20 or newer
 - npm
-- A Pexels API key for the backend
+- A Pexels API key, Pixabay API key, or Unsplash access key for the backend
 
 ## Install
 
@@ -49,7 +49,7 @@ Or from the backend folder:
 node server.js
 ```
 
-Backend setup details, environment variables, and API behavior are documented in [orangutan-api/README.md](/c:/Users/siwan/Documents/OrangyAPI/orangutan-api/README.md).
+Backend setup details, environment variables, and API behavior are documented in [orangutan-api/README.md].
 
 ### Frontend
 
@@ -110,14 +110,14 @@ If the API cache is temporarily unavailable, the orangutan endpoints return HTTP
 - `orangyapi`: Node web service for the backend
 - `orangy-frontend`: static site for the frontend
 
-Backend deployment requires `PEXELS_API_KEY`.
+Backend deployment requires at least one of `PEXELS_API_KEY`, `PIXABAY_API_KEY`, or `UNSPLASH_ACCESS_KEY`.
 
 ## Developer Readiness Notes
 
-- The backend now fails fast if `PEXELS_API_KEY` is missing.
+- The backend now fails fast if `PEXELS_API_KEY`, `PIXABAY_API_KEY`, and `UNSPLASH_ACCESS_KEY` are all missing.
 - The API fills its initial cache before accepting traffic.
 - A failed refresh does not replace the existing cache with an empty one.
-- Backend-specific onboarding lives in [orangutan-api/README.md](/c:/Users/siwan/Documents/OrangyAPI/orangutan-api/README.md).
+- Backend-specific onboarding lives in [orangutan-api/README.md].
 
 ## License
 

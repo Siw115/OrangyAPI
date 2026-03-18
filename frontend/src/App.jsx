@@ -128,6 +128,7 @@ export default function App() {
   const [isWarmingUp, setIsWarmingUp] = useState(false);
   const [warmupMessage, setWarmupMessage] = useState("Waking up the jungle...");
   const [showSlowLoadOverlay, setShowSlowLoadOverlay] = useState(false);
+  const [pendingMeta, setPendingMeta] = useState(null);
 
   const overlayVisible = FORCE_WARMUP_GAME || isWarmingUp || showSlowLoadOverlay;
   const game = useBananaGame(overlayVisible);
@@ -191,14 +192,24 @@ export default function App() {
     }
 
     setImageLoading(true);
-    setImage("");
     await preloadImage(photo.image);
+    const nextMeta = {
+      title: photo.title || "Orangutan",
+      source: photo.source || "",
+      photographer: photo.photographer || "",
+      pexelsUrl: photo.pexelsUrl || "",
+    };
     setImage(photo.image);
-    setTitle(photo.title || "Orangutan");
-    setSource(photo.source || "");
-    setPhotographer(photo.photographer || "");
-    setPexelsUrl(photo.pexelsUrl || "");
-  }, []);
+    if (prefersReducedMotion) {
+      setTitle(nextMeta.title);
+      setSource(nextMeta.source);
+      setPhotographer(nextMeta.photographer);
+      setPexelsUrl(nextMeta.pexelsUrl);
+    } else {
+      setPendingMeta(nextMeta);
+    }
+    setImageLoading(false);
+  }, [prefersReducedMotion]);
 
   const getOrangutan = useCallback(async () => {
     try {
@@ -519,11 +530,21 @@ export default function App() {
                         exit={prefersReducedMotion ? undefined : "exit"}
                         src={image}
                         alt={title}
-                        className={`block h-full w-full object-contain transition duration-300 ${imageLoading ? "opacity-0" : "opacity-100"}`}
+                        className="block h-full w-full object-contain"
                         loading="eager"
                         decoding="async"
                         fetchPriority="high"
-                        onLoad={() => setImageLoading(false)}
+                        onAnimationStart={(definition) => {
+                          if (definition !== "animate" || !pendingMeta) {
+                            return;
+                          }
+
+                          setTitle(pendingMeta.title);
+                          setSource(pendingMeta.source);
+                          setPhotographer(pendingMeta.photographer);
+                          setPexelsUrl(pendingMeta.pexelsUrl);
+                          setPendingMeta(null);
+                        }}
                         onError={() => {
                           setImageLoading(false);
                           setError("Could not load image");

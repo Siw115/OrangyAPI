@@ -33,6 +33,25 @@ const pexels = axios.create({
   httpsAgent
 });
 
+const pixabay = axios.create({
+  baseURL: "https://pixabay.com/api",
+  timeout: 10000,
+  proxy: false,
+  httpAgent,
+  httpsAgent
+});
+
+const unsplash = axios.create({
+  baseURL: "https://api.unsplash.com",
+  headers: {
+    Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY || ""}`
+  },
+  timeout: 10000,
+  proxy: false,
+  httpAgent,
+  httpsAgent
+});
+
 const imageFetchClient = axios.create({
   timeout: 15000,
   proxy: false,
@@ -63,12 +82,54 @@ const SEARCH_TERMS = [
   "orangutan jungle"
 ];
 
+const ORANGUTAN_INCLUDE_TERMS = [
+  "orangutan",
+  "orang utan",
+  "bornean orangutan",
+  "sumatran orangutan"
+];
+
+const PRIMATE_EXCLUDE_TERMS = [
+  "monkey",
+  "ape",
+  "chimp",
+  "chimpanzee",
+  "gorilla",
+  "baboon",
+  "macaque",
+  "gibbon",
+  "lemur",
+  "capuchin",
+  "mandrill",
+  "marmoset",
+  "tarsier",
+  "langur"
+];
+
+function getEnabledProviders() {
+  const providers = [];
+
+  if (process.env.PEXELS_API_KEY) {
+    providers.push("Pexels");
+  }
+
+  if (process.env.PIXABAY_API_KEY) {
+    providers.push("Pixabay");
+  }
+
+  if (process.env.UNSPLASH_ACCESS_KEY) {
+    providers.push("Unsplash");
+  }
+
+  return providers;
+}
+
 const swaggerDefinition = {
   openapi: "3.0.0",
   info: {
     title: "OrangyAPI",
     version: "1.0.0",
-    description: "Random orangutan image API powered by Pexels, with cached image proxying and a simple JSON-first interface.",
+    description: "Random orangutan image API powered by Pexels, Pixabay, and Unsplash, with cached image proxying and a simple JSON-first interface.",
     contact: {
       name: "OrangyAPI Maintainer",
       url: "https://github.com/Siw115/OrangyAPI"
@@ -96,18 +157,29 @@ const swaggerDefinition = {
     schemas: {
       Photo: {
         type: "object",
-        description: "Normalized orangutan photo metadata returned by the API.",
+        description: "Normalized orangutan photo metadata returned by the API (from Pexels, Pixabay, or Unsplash).",
         properties: {
-          id: { type: "integer", example: 1996333 },
+          id: {
+            oneOf: [
+              { type: "integer" },
+              { type: "string" }
+            ],
+            example: "u_abc123"
+          },
           animal: { type: "string", example: "orangutan" },
-          source: { type: "string", example: "Pexels" },
+          source: { type: "string", example: "Unsplash" },
           title: { type: "string", example: "Orangutan in the jungle" },
           image: { type: "string", format: "uri" },
           imageLarge: { type: "string", format: "uri" },
           thumbnail: { type: "string", format: "uri" },
           photographer: { type: "string", example: "Jane Doe" },
           photographerUrl: { type: "string", format: "uri" },
-          pexelsUrl: { type: "string", format: "uri" },
+          pexelsUrl: {
+            type: "string",
+            format: "uri",
+            description: "Legacy source page URL field kept for backwards compatibility."
+          },
+          sourceUrl: { type: "string", format: "uri" },
           avgColor: { type: "string", example: "#5A4A32" }
         },
         required: ["id", "animal", "source", "title", "image", "imageLarge", "thumbnail"]
@@ -143,7 +215,7 @@ const swaggerDefinition = {
         description: "Compact JSON summary of cache state and key routes.",
         properties: {
           name: { type: "string", example: "OrangyAPI" },
-          source: { type: "string", example: "Pexels" },
+          source: { type: "string", example: "Pexels, Pixabay, Unsplash" },
           cacheSize: { type: "integer", example: 120 },
           lastUpdated: { type: "string", format: "date-time", nullable: true },
           endpoints: {
@@ -255,7 +327,7 @@ const swaggerDefinition = {
                   default: {
                     value: {
                       name: "OrangyAPI",
-                      source: "Pexels",
+                      source: "Pexels, Pixabay, Unsplash",
                       cacheSize: 120,
                       lastUpdated: "2026-03-11T12:34:56.000Z",
                       endpoints: {
@@ -308,6 +380,7 @@ const swaggerDefinition = {
                       photographer: "Jane Doe",
                       photographerUrl: "https://www.pexels.com/@example",
                       pexelsUrl: "https://www.pexels.com/photo/example",
+                      sourceUrl: "https://www.pexels.com/photo/example",
                       avgColor: "#5A4A32"
                     }
                   }
@@ -392,19 +465,21 @@ const swaggerDefinition = {
                           photographer: "Jane Doe",
                           photographerUrl: "https://www.pexels.com/@example",
                           pexelsUrl: "https://www.pexels.com/photo/example",
+                          sourceUrl: "https://www.pexels.com/photo/example",
                           avgColor: "#5A4A32"
                         },
                         {
-                          id: 2889499,
+                          id: -2889499,
                           animal: "orangutan",
-                          source: "Pexels",
+                          source: "Pixabay",
                           title: "Baby orangutan portrait",
-                          image: "http://localhost:3000/api/images/2889499",
-                          imageLarge: "http://localhost:3000/api/images/2889499?variant=large",
-                          thumbnail: "http://localhost:3000/api/images/2889499?variant=thumbnail",
+                          image: "http://localhost:3000/api/images/-2889499",
+                          imageLarge: "http://localhost:3000/api/images/-2889499?variant=large",
+                          thumbnail: "http://localhost:3000/api/images/-2889499?variant=thumbnail",
                           photographer: "John Doe",
-                          photographerUrl: "https://www.pexels.com/@john",
-                          pexelsUrl: "https://www.pexels.com/photo/example-2",
+                          photographerUrl: "https://cdn.pixabay.com/user/2020/07/03/10-00-00-00_250x250.jpg",
+                          pexelsUrl: "https://pixabay.com/photos/orangutan-monkey-primate-2889499/",
+                          sourceUrl: "https://pixabay.com/photos/orangutan-monkey-primate-2889499/",
                           avgColor: "#7A5F40"
                         }
                       ]
@@ -458,15 +533,15 @@ const swaggerDefinition = {
         description: "Returns the proxied image binary for the requested cached orangutan photo.",
         parameters: [
           {
-            name: "photoId",
-            in: "path",
-            required: true,
-            description: "Photo ID returned by one of the orangutan endpoints",
-            schema: {
-              type: "integer",
-              example: 1996333
-            }
-          },
+              name: "photoId",
+              in: "path",
+              required: true,
+              description: "Photo ID returned by one of the orangutan endpoints",
+              schema: {
+                type: "string",
+                example: "u_abc123"
+              }
+            },
           {
             name: "variant",
             in: "query",
@@ -524,7 +599,7 @@ const swaggerDefinition = {
     "/api/refresh-cache": {
       get: {
         tags: ["Orangutans"],
-        summary: "Refresh cached Pexels results",
+        summary: "Refresh cached provider results",
         description: "Forces the backend to refill its in-memory orangutan cache immediately.",
         responses: {
           200: {
@@ -570,6 +645,10 @@ app.get("/docs/openapi.json", (req, res) => {
 });
 
 async function searchPexels(query, page = 1, perPage = 80) {
+  if (!process.env.PEXELS_API_KEY) {
+    return [];
+  }
+
   const response = await pexels.get("/search", {
     params: {
       query,
@@ -581,7 +660,43 @@ async function searchPexels(query, page = 1, perPage = 80) {
   return response.data.photos || [];
 }
 
-function normalizePhoto(photo) {
+async function searchPixabay(query, page = 1, perPage = 80) {
+  if (!process.env.PIXABAY_API_KEY) {
+    return [];
+  }
+
+  const response = await pixabay.get("/", {
+    params: {
+      key: process.env.PIXABAY_API_KEY,
+      q: query,
+      page,
+      per_page: perPage,
+      image_type: "photo",
+      safesearch: true
+    }
+  });
+
+  return response.data.hits || [];
+}
+
+async function searchUnsplash(query, page = 1, perPage = 30) {
+  if (!process.env.UNSPLASH_ACCESS_KEY) {
+    return [];
+  }
+
+  const response = await unsplash.get("/search/photos", {
+    params: {
+      query,
+      page,
+      per_page: Math.min(perPage, 30),
+      content_filter: "high"
+    }
+  });
+
+  return response.data.results || [];
+}
+
+function normalizePexelsPhoto(photo) {
   return {
     id: photo.id,
     animal: "orangutan",
@@ -593,10 +708,51 @@ function normalizePhoto(photo) {
     photographer: photo.photographer,
     photographerUrl: photo.photographer_url,
     pexelsUrl: photo.url,
+    sourceUrl: photo.url,
     avgColor: photo.avg_color,
     imageSource: photo.src.medium || photo.src.large || photo.src.small,
     imageLargeSource: photo.src.large2x || photo.src.large || photo.src.medium,
     thumbnailSource: photo.src.medium || photo.src.small || photo.src.tiny
+  };
+}
+
+function normalizePixabayPhoto(photo) {
+  return {
+    id: -Math.abs(photo.id),
+    animal: "orangutan",
+    source: "Pixabay",
+    title: (photo.tags || "Orangutan").split(",")[0].trim() || "Orangutan",
+    image: photo.webformatURL || photo.largeImageURL || photo.previewURL,
+    imageLarge: photo.largeImageURL || photo.webformatURL || photo.previewURL,
+    thumbnail: photo.previewURL || photo.webformatURL || photo.largeImageURL,
+    photographer: photo.user,
+    photographerUrl: photo.userImageURL || undefined,
+    pexelsUrl: photo.pageURL,
+    sourceUrl: photo.pageURL,
+    avgColor: undefined,
+    imageSource: photo.webformatURL || photo.largeImageURL || photo.previewURL,
+    imageLargeSource: photo.largeImageURL || photo.webformatURL || photo.previewURL,
+    thumbnailSource: photo.previewURL || photo.webformatURL || photo.largeImageURL
+  };
+}
+
+function normalizeUnsplashPhoto(photo) {
+  return {
+    id: `u_${photo.id}`,
+    animal: "orangutan",
+    source: "Unsplash",
+    title: photo.description || photo.alt_description || "Orangutan",
+    image: photo.urls?.regular || photo.urls?.small || photo.urls?.thumb,
+    imageLarge: photo.urls?.full || photo.urls?.regular || photo.urls?.small,
+    thumbnail: photo.urls?.thumb || photo.urls?.small || photo.urls?.regular,
+    photographer: photo.user?.name,
+    photographerUrl: photo.user?.links?.html,
+    pexelsUrl: photo.links?.html,
+    sourceUrl: photo.links?.html,
+    avgColor: photo.color,
+    imageSource: photo.urls?.regular || photo.urls?.small || photo.urls?.thumb,
+    imageLargeSource: photo.urls?.full || photo.urls?.regular || photo.urls?.small,
+    thumbnailSource: photo.urls?.thumb || photo.urls?.small || photo.urls?.regular
   };
 }
 
@@ -622,18 +778,45 @@ function toPublicPhoto(photo, req) {
     photographer: photo.photographer,
     photographerUrl: photo.photographerUrl,
     pexelsUrl: photo.pexelsUrl,
+    sourceUrl: photo.sourceUrl || photo.pexelsUrl,
     avgColor: photo.avgColor
   };
 }
 
-function looksLikeOrangutan(photo) {
-  const text = `${photo.alt || ""} ${photo.url || ""}`.toLowerCase();
+function looksLikeOrangutanPexels(photo) {
+  const text = `${photo.alt || ""}`.toLowerCase();
+  const hasInclude = ORANGUTAN_INCLUDE_TERMS.some((term) => text.includes(term));
+  const hasExclude = PRIMATE_EXCLUDE_TERMS.some((term) => text.includes(term));
 
-  return (
-    text.includes("orangutan") ||
-    text.includes("bornean") ||
-    text.includes("sumatran")
-  );
+  return hasInclude && !hasExclude;
+}
+
+function looksLikeOrangutanPixabay(photo) {
+  const tags = String(photo.tags || "").toLowerCase();
+  const hasInclude = ORANGUTAN_INCLUDE_TERMS.some((term) => tags.includes(term));
+  const hasExclude = PRIMATE_EXCLUDE_TERMS.some((term) => tags.includes(term));
+
+  return hasInclude && !hasExclude;
+}
+
+function looksLikeOrangutanUnsplash(photo) {
+  const tagText = Array.isArray(photo.tags)
+    ? photo.tags.map((tag) => String(tag?.title || tag || "")).join(" ")
+    : "";
+  const text = `${photo.description || ""} ${photo.alt_description || ""} ${photo.slug || ""} ${tagText}`.toLowerCase();
+  const hasInclude = ORANGUTAN_INCLUDE_TERMS.some((term) => text.includes(term));
+  const hasExclude = PRIMATE_EXCLUDE_TERMS.some((term) => text.includes(term));
+
+  return hasInclude && !hasExclude;
+}
+
+async function safeSearch(providerName, searchFn) {
+  try {
+    return await searchFn();
+  } catch (error) {
+    console.warn(`${providerName} search failed: ${error.message}`);
+    return [];
+  }
 }
 
 async function fillCache() {
@@ -642,12 +825,36 @@ async function fillCache() {
 
   for (const term of SEARCH_TERMS) {
     for (let page = 1; page <= 3; page++) {
-      const photos = await searchPexels(term, page, 80);
+      const [pexelsPhotos, pixabayPhotos, unsplashPhotos] = await Promise.all([
+        safeSearch("Pexels", () => searchPexels(term, page, 80)),
+        safeSearch("Pixabay", () => searchPixabay(term, page, 80)),
+        safeSearch("Unsplash", () => searchUnsplash(term, page, 30))
+      ]);
 
-      for (const photo of photos) {
-        if (!seenIds.has(photo.id) && looksLikeOrangutan(photo)) {
-          seenIds.add(photo.id);
-          collected.push(normalizePhoto(photo));
+      for (const photo of pexelsPhotos) {
+        const normalized = normalizePexelsPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanPexels(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
+        }
+      }
+
+      for (const photo of pixabayPhotos) {
+        const normalized = normalizePixabayPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanPixabay(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
+        }
+      }
+
+      for (const photo of unsplashPhotos) {
+        const normalized = normalizeUnsplashPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanUnsplash(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
         }
       }
     }
@@ -655,19 +862,43 @@ async function fillCache() {
 
   if (collected.length < 20) {
     for (const term of SEARCH_TERMS) {
-      const photos = await searchPexels(term, 1, 80);
+      const [pexelsPhotos, pixabayPhotos, unsplashPhotos] = await Promise.all([
+        safeSearch("Pexels", () => searchPexels(term, 1, 80)),
+        safeSearch("Pixabay", () => searchPixabay(term, 1, 80)),
+        safeSearch("Unsplash", () => searchUnsplash(term, 1, 30))
+      ]);
 
-      for (const photo of photos) {
-        if (!seenIds.has(photo.id)) {
-          seenIds.add(photo.id);
-          collected.push(normalizePhoto(photo));
+      for (const photo of pexelsPhotos) {
+        const normalized = normalizePexelsPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanPexels(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
+        }
+      }
+
+      for (const photo of pixabayPhotos) {
+        const normalized = normalizePixabayPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanPixabay(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
+        }
+      }
+
+      for (const photo of unsplashPhotos) {
+        const normalized = normalizeUnsplashPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanUnsplash(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
         }
       }
     }
   }
 
   if (!collected.length) {
-    throw new Error("Pexels returned no orangutan photos");
+    throw new Error("No orangutan photos were returned from enabled providers");
   }
 
   orangutanCache = collected;
@@ -893,7 +1124,7 @@ app.get("/docs/json", (req, res) => {
 
   res.json({
     name: "OrangyAPI",
-    source: "Pexels",
+    source: getEnabledProviders().join(", ") || "None",
     status: warmupState ? "warming_up" : "ready",
     cacheSize: orangutanCache.length,
     lastUpdated,
@@ -1006,8 +1237,8 @@ app.get("/api/refresh-cache", async (req, res) => {
 });
 
 async function startServer() {
-  if (!process.env.PEXELS_API_KEY) {
-    console.error("Missing required environment variable: PEXELS_API_KEY");
+  if (!process.env.PEXELS_API_KEY && !process.env.PIXABAY_API_KEY && !process.env.UNSPLASH_ACCESS_KEY) {
+    console.error("Missing required environment variable: set PEXELS_API_KEY, PIXABAY_API_KEY, or UNSPLASH_ACCESS_KEY");
     process.exit(1);
   }
 
