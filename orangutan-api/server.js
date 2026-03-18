@@ -41,6 +41,17 @@ const pixabay = axios.create({
   httpsAgent
 });
 
+const unsplash = axios.create({
+  baseURL: "https://api.unsplash.com",
+  headers: {
+    Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY || ""}`
+  },
+  timeout: 10000,
+  proxy: false,
+  httpAgent,
+  httpsAgent
+});
+
 const imageFetchClient = axios.create({
   timeout: 15000,
   proxy: false,
@@ -106,6 +117,10 @@ function getEnabledProviders() {
     providers.push("Pixabay");
   }
 
+  if (process.env.UNSPLASH_ACCESS_KEY) {
+    providers.push("Unsplash");
+  }
+
   return providers;
 }
 
@@ -114,7 +129,7 @@ const swaggerDefinition = {
   info: {
     title: "OrangyAPI",
     version: "1.0.0",
-    description: "Random orangutan image API powered by Pexels and Pixabay, with cached image proxying and a simple JSON-first interface.",
+    description: "Random orangutan image API powered by Pexels, Pixabay, and Unsplash, with cached image proxying and a simple JSON-first interface.",
     contact: {
       name: "OrangyAPI Maintainer",
       url: "https://github.com/Siw115/OrangyAPI"
@@ -142,11 +157,17 @@ const swaggerDefinition = {
     schemas: {
       Photo: {
         type: "object",
-        description: "Normalized orangutan photo metadata returned by the API (from Pexels or Pixabay).",
+        description: "Normalized orangutan photo metadata returned by the API (from Pexels, Pixabay, or Unsplash).",
         properties: {
-          id: { type: "integer", example: 1996333 },
+          id: {
+            oneOf: [
+              { type: "integer" },
+              { type: "string" }
+            ],
+            example: "u_abc123"
+          },
           animal: { type: "string", example: "orangutan" },
-          source: { type: "string", example: "Pixabay" },
+          source: { type: "string", example: "Unsplash" },
           title: { type: "string", example: "Orangutan in the jungle" },
           image: { type: "string", format: "uri" },
           imageLarge: { type: "string", format: "uri" },
@@ -194,7 +215,7 @@ const swaggerDefinition = {
         description: "Compact JSON summary of cache state and key routes.",
         properties: {
           name: { type: "string", example: "OrangyAPI" },
-          source: { type: "string", example: "Pexels, Pixabay" },
+          source: { type: "string", example: "Pexels, Pixabay, Unsplash" },
           cacheSize: { type: "integer", example: 120 },
           lastUpdated: { type: "string", format: "date-time", nullable: true },
           endpoints: {
@@ -306,7 +327,7 @@ const swaggerDefinition = {
                   default: {
                     value: {
                       name: "OrangyAPI",
-                      source: "Pexels, Pixabay",
+                      source: "Pexels, Pixabay, Unsplash",
                       cacheSize: 120,
                       lastUpdated: "2026-03-11T12:34:56.000Z",
                       endpoints: {
@@ -512,15 +533,15 @@ const swaggerDefinition = {
         description: "Returns the proxied image binary for the requested cached orangutan photo.",
         parameters: [
           {
-            name: "photoId",
-            in: "path",
-            required: true,
-            description: "Photo ID returned by one of the orangutan endpoints",
-            schema: {
-              type: "integer",
-              example: 1996333
-            }
-          },
+              name: "photoId",
+              in: "path",
+              required: true,
+              description: "Photo ID returned by one of the orangutan endpoints",
+              schema: {
+                type: "string",
+                example: "u_abc123"
+              }
+            },
           {
             name: "variant",
             in: "query",
@@ -658,6 +679,23 @@ async function searchPixabay(query, page = 1, perPage = 80) {
   return response.data.hits || [];
 }
 
+async function searchUnsplash(query, page = 1, perPage = 30) {
+  if (!process.env.UNSPLASH_ACCESS_KEY) {
+    return [];
+  }
+
+  const response = await unsplash.get("/search/photos", {
+    params: {
+      query,
+      page,
+      per_page: Math.min(perPage, 30),
+      content_filter: "high"
+    }
+  });
+
+  return response.data.results || [];
+}
+
 function normalizePexelsPhoto(photo) {
   return {
     id: photo.id,
@@ -695,6 +733,26 @@ function normalizePixabayPhoto(photo) {
     imageSource: photo.webformatURL || photo.largeImageURL || photo.previewURL,
     imageLargeSource: photo.largeImageURL || photo.webformatURL || photo.previewURL,
     thumbnailSource: photo.previewURL || photo.webformatURL || photo.largeImageURL
+  };
+}
+
+function normalizeUnsplashPhoto(photo) {
+  return {
+    id: `u_${photo.id}`,
+    animal: "orangutan",
+    source: "Unsplash",
+    title: photo.description || photo.alt_description || "Orangutan",
+    image: photo.urls?.regular || photo.urls?.small || photo.urls?.thumb,
+    imageLarge: photo.urls?.full || photo.urls?.regular || photo.urls?.small,
+    thumbnail: photo.urls?.thumb || photo.urls?.small || photo.urls?.regular,
+    photographer: photo.user?.name,
+    photographerUrl: photo.user?.links?.html,
+    pexelsUrl: photo.links?.html,
+    sourceUrl: photo.links?.html,
+    avgColor: photo.color,
+    imageSource: photo.urls?.regular || photo.urls?.small || photo.urls?.thumb,
+    imageLargeSource: photo.urls?.full || photo.urls?.regular || photo.urls?.small,
+    thumbnailSource: photo.urls?.thumb || photo.urls?.small || photo.urls?.regular
   };
 }
 
@@ -741,6 +799,17 @@ function looksLikeOrangutanPixabay(photo) {
   return hasInclude && !hasExclude;
 }
 
+function looksLikeOrangutanUnsplash(photo) {
+  const tagText = Array.isArray(photo.tags)
+    ? photo.tags.map((tag) => String(tag?.title || tag || "")).join(" ")
+    : "";
+  const text = `${photo.description || ""} ${photo.alt_description || ""} ${photo.slug || ""} ${tagText}`.toLowerCase();
+  const hasInclude = ORANGUTAN_INCLUDE_TERMS.some((term) => text.includes(term));
+  const hasExclude = PRIMATE_EXCLUDE_TERMS.some((term) => text.includes(term));
+
+  return hasInclude && !hasExclude;
+}
+
 async function safeSearch(providerName, searchFn) {
   try {
     return await searchFn();
@@ -756,22 +825,35 @@ async function fillCache() {
 
   for (const term of SEARCH_TERMS) {
     for (let page = 1; page <= 3; page++) {
-      const [pexelsPhotos, pixabayPhotos] = await Promise.all([
+      const [pexelsPhotos, pixabayPhotos, unsplashPhotos] = await Promise.all([
         safeSearch("Pexels", () => searchPexels(term, page, 80)),
-        safeSearch("Pixabay", () => searchPixabay(term, page, 80))
+        safeSearch("Pixabay", () => searchPixabay(term, page, 80)),
+        safeSearch("Unsplash", () => searchUnsplash(term, page, 30))
       ]);
 
       for (const photo of pexelsPhotos) {
-        if (!seenIds.has(photo.id) && looksLikeOrangutanPexels(photo)) {
-          seenIds.add(photo.id);
-          collected.push(normalizePexelsPhoto(photo));
+        const normalized = normalizePexelsPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanPexels(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
         }
       }
 
       for (const photo of pixabayPhotos) {
         const normalized = normalizePixabayPhoto(photo);
-        if (!seenIds.has(normalized.id) && looksLikeOrangutanPixabay(photo)) {
-          seenIds.add(normalized.id);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanPixabay(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
+        }
+      }
+
+      for (const photo of unsplashPhotos) {
+        const normalized = normalizeUnsplashPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanUnsplash(photo)) {
+          seenIds.add(seenKey);
           collected.push(normalized);
         }
       }
@@ -780,22 +862,35 @@ async function fillCache() {
 
   if (collected.length < 20) {
     for (const term of SEARCH_TERMS) {
-      const [pexelsPhotos, pixabayPhotos] = await Promise.all([
+      const [pexelsPhotos, pixabayPhotos, unsplashPhotos] = await Promise.all([
         safeSearch("Pexels", () => searchPexels(term, 1, 80)),
-        safeSearch("Pixabay", () => searchPixabay(term, 1, 80))
+        safeSearch("Pixabay", () => searchPixabay(term, 1, 80)),
+        safeSearch("Unsplash", () => searchUnsplash(term, 1, 30))
       ]);
 
       for (const photo of pexelsPhotos) {
-        if (!seenIds.has(photo.id) && looksLikeOrangutanPexels(photo)) {
-          seenIds.add(photo.id);
-          collected.push(normalizePexelsPhoto(photo));
+        const normalized = normalizePexelsPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanPexels(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
         }
       }
 
       for (const photo of pixabayPhotos) {
         const normalized = normalizePixabayPhoto(photo);
-        if (!seenIds.has(normalized.id) && looksLikeOrangutanPixabay(photo)) {
-          seenIds.add(normalized.id);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanPixabay(photo)) {
+          seenIds.add(seenKey);
+          collected.push(normalized);
+        }
+      }
+
+      for (const photo of unsplashPhotos) {
+        const normalized = normalizeUnsplashPhoto(photo);
+        const seenKey = String(normalized.id);
+        if (!seenIds.has(seenKey) && looksLikeOrangutanUnsplash(photo)) {
+          seenIds.add(seenKey);
           collected.push(normalized);
         }
       }
@@ -1142,8 +1237,8 @@ app.get("/api/refresh-cache", async (req, res) => {
 });
 
 async function startServer() {
-  if (!process.env.PEXELS_API_KEY && !process.env.PIXABAY_API_KEY) {
-    console.error("Missing required environment variable: set PEXELS_API_KEY or PIXABAY_API_KEY");
+  if (!process.env.PEXELS_API_KEY && !process.env.PIXABAY_API_KEY && !process.env.UNSPLASH_ACCESS_KEY) {
+    console.error("Missing required environment variable: set PEXELS_API_KEY, PIXABAY_API_KEY, or UNSPLASH_ACCESS_KEY");
     process.exit(1);
   }
 
