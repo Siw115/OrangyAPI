@@ -191,6 +191,12 @@ export default function App() {
       throw new Error("Missing image");
     }
 
+    setPendingMeta(null);
+    setImage("");
+    setTitle("");
+    setSource("");
+    setPhotographer("");
+    setPexelsUrl("");
     setImageLoading(true);
     await preloadImage(photo.image);
     const nextMeta = {
@@ -205,10 +211,10 @@ export default function App() {
       setSource(nextMeta.source);
       setPhotographer(nextMeta.photographer);
       setPexelsUrl(nextMeta.pexelsUrl);
+      setImageLoading(false);
     } else {
       setPendingMeta(nextMeta);
     }
-    setImageLoading(false);
   }, [prefersReducedMotion]);
 
   const getOrangutan = useCallback(async () => {
@@ -534,16 +540,20 @@ export default function App() {
                         loading="eager"
                         decoding="async"
                         fetchPriority="high"
-                        onAnimationStart={(definition) => {
-                          if (definition !== "animate" || !pendingMeta) {
+                        onAnimationComplete={(definition) => {
+                          if (definition !== "animate") {
                             return;
                           }
 
-                          setTitle(pendingMeta.title);
-                          setSource(pendingMeta.source);
-                          setPhotographer(pendingMeta.photographer);
-                          setPexelsUrl(pendingMeta.pexelsUrl);
-                          setPendingMeta(null);
+                          if (pendingMeta) {
+                            setTitle(pendingMeta.title);
+                            setSource(pendingMeta.source);
+                            setPhotographer(pendingMeta.photographer);
+                            setPexelsUrl(pendingMeta.pexelsUrl);
+                            setPendingMeta(null);
+                          }
+
+                          setImageLoading(false);
                         }}
                         onError={() => {
                           setImageLoading(false);
