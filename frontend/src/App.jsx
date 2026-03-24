@@ -458,7 +458,15 @@ export default function App() {
                       >
                         humation.app
                       </a>
-                      .
+                      . GitHub:{" "}
+                      <a
+                        href="https://github.com/Siw115"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[#272343] underline decoration-[#ffd803] underline-offset-4"
+                      >
+                        @Siw115
+                      </a>
                     </p>
                   </div>
                 </motion.div>
